@@ -1,441 +1,303 @@
 /*
- * Copyright 2013 Open Source Robotics Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
-*/
-
-/*
- * Desc: Simple model controller that uses a twist message to move a robot on
- *       the xy plane.
- * Author: Piyush Khandelwal
- * Date: 29 July 2013
- */
-
-/*
- * temporary copied from gazebo_plugins
+ * gz-sim8 + ROS2 port of GazeboRosPlanarForceMove
+ * Original Copyright 2013 Open Source Robotics Foundation
+ * Licensed under the Apache License, Version 2.0
  */
 
 #include "gazebo_ros_planar_move.h"
 
+#include <gz/plugin/Register.hh>
+#include <gz/sim/components/LinearVelocityCmd.hh>
+#include <gz/sim/components/AngularVelocityCmd.hh>
+#include <gz/sim/Util.hh>
+
+#include <cmath>
+
+GZ_ADD_PLUGIN(
+  gazebo::GazeboRosPlanarForceMove,
+  gz::sim::System,
+  gz::sim::ISystemConfigure,
+  gz::sim::ISystemPreUpdate
+)
+
+GZ_ADD_PLUGIN_ALIAS(
+  gazebo::GazeboRosPlanarForceMove,
+  "gazebo::GazeboRosPlanarForceMove"
+)
+
 namespace gazebo
 {
 
-  GazeboRosPlanarForceMove::GazeboRosPlanarForceMove() {}
+GazeboRosPlanarForceMove::GazeboRosPlanarForceMove() {}
 
-  GazeboRosPlanarForceMove::~GazeboRosPlanarForceMove() {}
-
-  // Load the controller
-  void GazeboRosPlanarForceMove::Load(physics::ModelPtr parent,
-      sdf::ElementPtr sdf)
-  {
-
-    parent_ = parent;
-
-    /* Parse parameters */
-
-    robot_namespace_ = "";
-    if (!sdf->HasElement("robotNamespace"))
-    {
-      ROS_INFO_NAMED("planar_move", "PlanarMovePlugin missing <robotNamespace>, "
-          "defaults to \"%s\"", robot_namespace_.c_str());
-    }
-    else
-    {
-      robot_namespace_ =
-        sdf->GetElement("robotNamespace")->Get<std::string>();
-    }
-
-    enable_y_axis_ = true;
-    if (!sdf->HasElement ("enableYAxis"))
-    {
-      ROS_INFO_NAMED("planar_move", "PlanarMovePlugin missing <enableYAxis>, "
-          "defaults to \"%d\"", enable_y_axis_);
-    }
-    else
-    {
-      enable_y_axis_ = sdf->GetElement("enableYAxis")->Get<bool>();
-    }
-
-    command_topic_ = "cmd_vel";
-    if (!sdf->HasElement("commandTopic"))
-    {
-      ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <commandTopic>, "
-          "defaults to \"%s\"",
-          robot_namespace_.c_str(), command_topic_.c_str());
-    }
-    else
-    {
-      command_topic_ = sdf->GetElement("commandTopic")->Get<std::string>();
-    }
-
-    odometry_topic_ = "odom";
-    if (!sdf->HasElement("odometryTopic"))
-    {
-      ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <odometryTopic>, "
-          "defaults to \"%s\"",
-          robot_namespace_.c_str(), odometry_topic_.c_str());
-    }
-    else
-    {
-      odometry_topic_ = sdf->GetElement("odometryTopic")->Get<std::string>();
-    }
-
-    odometry_frame_ = "odom";
-    if (!sdf->HasElement("odometryFrame"))
-    {
-      ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <odometryFrame>, "
-          "defaults to \"%s\"",
-          robot_namespace_.c_str(), odometry_frame_.c_str());
-    }
-    else
-    {
-      odometry_frame_ = sdf->GetElement("odometryFrame")->Get<std::string>();
-    }
-
-    robot_base_frame_ = "base_footprint";
-    if (!sdf->HasElement("robotBaseFrame"))
-    {
-      ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <robotBaseFrame>, "
-          "defaults to \"%s\"",
-          robot_namespace_.c_str(), robot_base_frame_.c_str());
-    }
-    else
-    {
-      robot_base_frame_ = sdf->GetElement("robotBaseFrame")->Get<std::string>();
-    }
-
-    odometry_rate_ = 20.0;
-    if (!sdf->HasElement("odometryRate"))
-    {
-      ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <odometryRate>, "
-          "defaults to %f",
-          robot_namespace_.c_str(), odometry_rate_);
-    }
-    else
-    {
-      odometry_rate_ = sdf->GetElement("odometryRate")->Get<double>();
-    }
-
-    use_force_feedback_ = false;
-    if (!sdf->HasElement ("useForceFeedback"))
-    {
-      ROS_INFO_NAMED("planar_move", "PlanarMovePlugin missing <useForceFeedback>, "
-          "defaults to \"%d\"", use_force_feedback_);
-    }
-    else
-    {
-      use_force_feedback_ = sdf->GetElement("useForceFeedback")->Get<bool>();
-    }
-
-    if (use_force_feedback_) {
-      std::string applied_force_link = "base_link";
-      if (!sdf->HasElement("appliedForceLink"))
-      {
-          ROS_WARN_NAMED("planar_move", "PlanarMovePlugin (ns = %s) missing <appliedForceLink>, "
-                         "defaults to \"%s\"",
-                         robot_namespace_.c_str(), applied_force_link.c_str());
-      }
-      else
-      {
-          applied_force_link = sdf->GetElement("appliedForceLink")->Get<std::string>();
-      }
-      physics::LinkPtr lnk = parent_->GetLink(applied_force_link);
-      if (!lnk) {
-        physics::Link_V ll = parent_->GetLinks();
-        std::string nm = ll[0]->GetName();
-        lnk = ll[0];
-        ROS_WARN_NAMED("planar_move", "robot model does not have the link named '%s'"
-                       ", use '%s' instead of it",
-                       applied_force_link.c_str(), nm.c_str());
-      }
-      robot_link_ = lnk;
-
-      gain_x_   = 20000;
-      gain_y_   = 20000;
-      gain_rot_ = 5000;
-      if (sdf->HasElement ("forceGainX"))
-      {
-        gain_x_ = sdf->GetElement("forceGainX")->Get<double>();
-      }
-      if (sdf->HasElement ("forceGainY"))
-      {
-        gain_y_ = sdf->GetElement("forceGainY")->Get<double>();
-      }
-      if (sdf->HasElement ("forceGainRot"))
-      {
-        gain_rot_ = sdf->GetElement("forceGainRot")->Get<double>();
-      }
-
-      v_dead_zone_ = 0.0001;
-      if (sdf->HasElement ("velocityDeadZone"))
-      {
-        v_dead_zone_ = sdf->GetElement("velocityDeadZone")->Get<double>();
-      }
-
-      ROS_INFO_NAMED("planar_move", "PlanarMovePlugin (ns = %s) "
-                     "use force feedback to %s with (gain_x, gain_y, gain_rot) = (%f, %f, %f)",
-                     robot_namespace_.c_str(),
-                     robot_link_->GetName().c_str(),
-                     gain_x_, gain_y_, gain_rot_);
-    }
-
-#if GAZEBO_MAJOR_VERSION >= 8
-    last_odom_publish_time_ = parent_->GetWorld()->SimTime();
-#else
-    last_odom_publish_time_ = parent_->GetWorld()->GetSimTime();
-#endif
-#if GAZEBO_MAJOR_VERSION >= 8
-    last_odom_pose_ = parent_->WorldPose();
-#else
-    last_odom_pose_ = parent_->GetWorldPose().Ign();
-#endif
-    x_ = 0;
-    y_ = 0;
-    rot_ = 0;
-    alive_ = true;
-
-    base_cmd_vel_ = true;
-    fixed_x_ = last_odom_pose_.Pos().X();
-    fixed_y_ = last_odom_pose_.Pos().Y();
-    fixed_yaw_ = last_odom_pose_.Rot().Yaw();
-
-    // Ensure that ROS has been initialized and subscribe to cmd_vel
-    if (!ros::isInitialized())
-    {
-      ROS_FATAL_STREAM_NAMED("planar_move", "PlanarMovePlugin (ns = " << robot_namespace_
-        << "). A ROS node for Gazebo has not been initialized, "
-        << "unable to load plugin. Load the Gazebo system plugin "
-        << "'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
-      return;
-    }
-    rosnode_.reset(new ros::NodeHandle(robot_namespace_));
-
-    ROS_DEBUG_NAMED("planar_move", "OCPlugin (%s) has started",
-        robot_namespace_.c_str());
-
-    tf_prefix_ = tf::getPrefixParam(*rosnode_);
-    transform_broadcaster_.reset(new tf::TransformBroadcaster());
-
-    // subscribe to the odometry topic
-    ros::SubscribeOptions so =
-      ros::SubscribeOptions::create<geometry_msgs::Twist>(command_topic_, 1,
-          boost::bind(&GazeboRosPlanarForceMove::cmdVelCallback, this, _1),
-          ros::VoidPtr(), &queue_);
-
-    vel_sub_ = rosnode_->subscribe(so);
-    odometry_pub_ = rosnode_->advertise<nav_msgs::Odometry>(odometry_topic_, 1);
-
-    // start custom queue for diff drive
-    callback_queue_thread_ =
-      boost::thread(boost::bind(&GazeboRosPlanarForceMove::QueueThread, this));
-
-    // listen to the update event (broadcast every simulation iteration)
-    update_connection_ =
-      event::Events::ConnectWorldUpdateBegin(
-          boost::bind(&GazeboRosPlanarForceMove::UpdateChild, this));
-
+GazeboRosPlanarForceMove::~GazeboRosPlanarForceMove()
+{
+  if (this->executor_) {
+    this->executor_->cancel();
   }
-
-  // Update the controller
-  void GazeboRosPlanarForceMove::UpdateChild()
-  {
-    boost::mutex::scoped_lock scoped_lock(lock);
-
-#if GAZEBO_MAJOR_VERSION >= 8
-    ignition::math::Pose3d pose = parent_->WorldPose();
-#else
-    ignition::math::Pose3d pose = parent_->GetWorldPose().Ign();
-#endif
-
-    if ( use_force_feedback_ ) {
-      // feedback velocity error to applied force
-#if GAZEBO_MAJOR_VERSION >= 8
-      ignition::math::Vector3d rlin = robot_link_->RelativeLinearVel();
-      ignition::math::Vector3d rang = robot_link_->RelativeAngularVel();
-#else
-      ignition::math::Vector3d rlin = robot_link_->GetRelativeLinearVel().Ign();
-      ignition::math::Vector3d rang = robot_link_->GetRelativeAngularVel().Ign();
-#endif
-
-      double f_x, f_y, t_rot;
-      if (((x_ * x_) + (y_ * y_) + (rot_ * rot_)) <= v_dead_zone_) {
-        // Do nothing for the zero input
-        if (base_cmd_vel_) {
-          base_cmd_vel_ = false;
-          // store stopped location
-          fixed_x_ = pose.Pos().X();
-          fixed_y_ = pose.Pos().Y();
-          fixed_yaw_ = pose.Rot().Yaw();
-        }
-        f_x   = fixed_x_ - pose.Pos().X();
-        f_y   = fixed_y_ - pose.Pos().Y();
-        t_rot = fixed_yaw_ - pose.Rot().Yaw();
-        if (t_rot > M_PI) t_rot -= 2*M_PI;
-        if (t_rot < -M_PI) t_rot += 2*M_PI;
-        // convert to local direction
-        ignition::math::Vector3d wfv(f_x, f_y, 0);
-        ignition::math::Vector3d lfv = pose.Rot().RotateVectorReverse(wfv);
-        f_x = lfv.X();
-        f_y = lfv.Y();
-
-        f_x   *= (gain_x_*4);
-        f_y   *= (gain_y_*4);
-        t_rot *= (gain_rot_*4);
-
-        f_x   += (x_   - rlin.X()) * gain_x_ * 0.3;
-        f_y   += (y_   - rlin.Y()) * gain_y_ * 0.3;
-        t_rot += (rot_ - rang.Z()) * gain_rot_ * 0.3;
-      } else {
-      base_cmd_vel_ = true;
-      //ROS_WARN_NAMED("planar_force_move", "vel: %f %f %f / %f %f %f",
-      //               rlin.X(), rlin.Y(), rlin.Z(),
-      //               rang.X(), rang.Y(), rang.Z());
-      f_x   = (x_   - rlin.X()) * gain_x_;
-      f_y   = (y_   - rlin.Y()) * gain_y_;
-      t_rot = (rot_ - rang.Z()) * gain_rot_;
-      }
-      ignition::math::Vector3d rfc(f_x, f_y, 0);
-      ignition::math::Vector3d rtq(0, 0, t_rot);
-      //ROS_WARN_NAMED("planar_force_move", "apply: %f %f - %f",
-      //               f_x, f_y, t_rot);
-      robot_link_->AddRelativeForce(rfc);
-      robot_link_->AddRelativeTorque(rtq);
-    } else {
-    // directly set velocity
-    float yaw = pose.Rot().Yaw();
-    parent_->SetLinearVel(ignition::math::Vector3d(
-          x_ * cosf(yaw) - y_ * sinf(yaw),
-          y_ * cosf(yaw) + x_ * sinf(yaw),
-          0));
-    parent_->SetAngularVel(ignition::math::Vector3d(0, 0, rot_));
-    }
-
-    if (odometry_rate_ > 0.0) {
-#if GAZEBO_MAJOR_VERSION >= 8
-      common::Time current_time = parent_->GetWorld()->SimTime();
-#else
-      common::Time current_time = parent_->GetWorld()->GetSimTime();
-#endif
-      double seconds_since_last_update =
-        (current_time - last_odom_publish_time_).Double();
-      if (seconds_since_last_update > (1.0 / odometry_rate_)) {
-        publishOdometry(seconds_since_last_update);
-        last_odom_publish_time_ = current_time;
-      }
-    }
+  if (this->executor_thread_.joinable()) {
+    this->executor_thread_.join();
   }
-
-  // Finalize the controller
-  void GazeboRosPlanarForceMove::FiniChild() {
-    alive_ = false;
-    queue_.clear();
-    queue_.disable();
-    rosnode_->shutdown();
-    callback_queue_thread_.join();
-  }
-
-  void GazeboRosPlanarForceMove::cmdVelCallback(
-      const geometry_msgs::Twist::ConstPtr& cmd_msg)
-  {
-    boost::mutex::scoped_lock scoped_lock(lock);
-    x_ = cmd_msg->linear.x;
-    if (enable_y_axis_)
-    {
-      y_ = cmd_msg->linear.y;
-    }
-    rot_ = cmd_msg->angular.z;
-  }
-
-  void GazeboRosPlanarForceMove::QueueThread()
-  {
-    static const double timeout = 0.01;
-    while (alive_ && rosnode_->ok())
-    {
-      queue_.callAvailable(ros::WallDuration(timeout));
-    }
-  }
-
-  void GazeboRosPlanarForceMove::publishOdometry(double step_time)
-  {
-
-    ros::Time current_time = ros::Time::now();
-    std::string odom_frame = tf::resolve(tf_prefix_, odometry_frame_);
-    std::string base_footprint_frame =
-      tf::resolve(tf_prefix_, robot_base_frame_);
-
-    // getting data for base_footprint to odom transform
-#if GAZEBO_MAJOR_VERSION >= 8
-    ignition::math::Pose3d pose = this->parent_->WorldPose();
-#else
-    ignition::math::Pose3d pose = this->parent_->GetWorldPose().Ign();
-#endif
-
-    tf::Quaternion qt(pose.Rot().X(), pose.Rot().Y(), pose.Rot().Z(), pose.Rot().W());
-    tf::Vector3    vt(pose.Pos().X(), pose.Pos().Y(), pose.Pos().Z());
-
-    tf::Transform base_footprint_to_odom(qt, vt);
-    transform_broadcaster_->sendTransform(
-        tf::StampedTransform(base_footprint_to_odom, current_time, odom_frame,
-            base_footprint_frame));
-
-    // publish odom topic
-    odom_.pose.pose.position.x = pose.Pos().X();
-    odom_.pose.pose.position.y = pose.Pos().Y();
-
-    odom_.pose.pose.orientation.x = pose.Rot().X();
-    odom_.pose.pose.orientation.y = pose.Rot().Y();
-    odom_.pose.pose.orientation.z = pose.Rot().Z();
-    odom_.pose.pose.orientation.w = pose.Rot().W();
-    odom_.pose.covariance[0] = 0.00001;
-    odom_.pose.covariance[7] = 0.00001;
-    odom_.pose.covariance[14] = 1000000000000.0;
-    odom_.pose.covariance[21] = 1000000000000.0;
-    odom_.pose.covariance[28] = 1000000000000.0;
-    odom_.pose.covariance[35] = 0.001;
-
-    // get velocity in /odom frame
-    ignition::math::Vector3d linear;
-    linear.X() = (pose.Pos().X() - last_odom_pose_.Pos().X()) / step_time;
-    linear.Y() = (pose.Pos().Y() - last_odom_pose_.Pos().Y()) / step_time;
-    if (rot_ > M_PI / step_time)
-    {
-      // we cannot calculate the angular velocity correctly
-      odom_.twist.twist.angular.z = rot_;
-    }
-    else
-    {
-      float last_yaw = last_odom_pose_.Rot().Yaw();
-      float current_yaw = pose.Rot().Yaw();
-      while (current_yaw < last_yaw - M_PI) current_yaw += 2 * M_PI;
-      while (current_yaw > last_yaw + M_PI) current_yaw -= 2 * M_PI;
-      float angular_diff = current_yaw - last_yaw;
-      odom_.twist.twist.angular.z = angular_diff / step_time;
-    }
-    last_odom_pose_ = pose;
-
-    // convert velocity to child_frame_id (aka base_footprint)
-    float yaw = pose.Rot().Yaw();
-    odom_.twist.twist.linear.x = cosf(yaw) * linear.X() + sinf(yaw) * linear.Y();
-    odom_.twist.twist.linear.y = cosf(yaw) * linear.Y() - sinf(yaw) * linear.X();
-
-    odom_.header.stamp = current_time;
-    odom_.header.frame_id = odom_frame;
-    odom_.child_frame_id = base_footprint_frame;
-
-    odometry_pub_.publish(odom_);
-  }
-
-  //GZ_REGISTER_MODEL_PLUGIN(GazeboRosPlanarMove)
-  GZ_REGISTER_MODEL_PLUGIN(GazeboRosPlanarForceMove)
 }
+
+void GazeboRosPlanarForceMove::Configure(
+  const gz::sim::Entity &_entity,
+  const std::shared_ptr<const sdf::Element> &_sdf,
+  gz::sim::EntityComponentManager &_ecm,
+  gz::sim::EventManager &)
+{
+  this->model_ = gz::sim::Model(_entity);
+
+  auto sdf = std::const_pointer_cast<sdf::Element>(_sdf);
+
+  auto get_str = [&](const std::string &tag, const std::string &def) -> std::string {
+    if (sdf->HasElement(tag)) return sdf->GetElement(tag)->Get<std::string>();
+    return def;
+  };
+  auto get_double = [&](const std::string &tag, double def) -> double {
+    if (sdf->HasElement(tag)) return sdf->GetElement(tag)->Get<double>();
+    return def;
+  };
+  auto get_bool = [&](const std::string &tag, bool def) -> bool {
+    if (sdf->HasElement(tag)) return sdf->GetElement(tag)->Get<bool>();
+    return def;
+  };
+
+  this->command_topic_    = get_str("commandTopic",    "cmd_vel");
+  this->odometry_topic_   = get_str("odometryTopic",   "odom");
+  this->odometry_frame_   = get_str("odometryFrame",   "odom");
+  this->robot_base_frame_ = get_str("robotBaseFrame",  "base_link");
+  this->odometry_rate_    = get_double("odometryRate", 20.0);
+  this->enable_y_axis_    = get_bool("enableYAxis",    true);
+  this->use_force_feedback_ = get_bool("useForceFeedback", false);
+
+  // Get canonical link for velocity / pose queries
+  this->canonical_link_entity_ = this->model_.CanonicalLink(_ecm);
+
+  if (this->use_force_feedback_) {
+    std::string link_name = get_str("appliedForceLink", "base_link");
+    auto lnk = this->model_.LinkByName(_ecm, link_name);
+    if (lnk == gz::sim::kNullEntity) {
+      // fall back to canonical link
+      lnk = this->canonical_link_entity_;
+    }
+    this->force_link_entity_ = lnk;
+    this->gain_x_   = get_double("forceGainX",   20000);
+    this->gain_y_   = get_double("forceGainY",   20000);
+    this->gain_rot_ = get_double("forceGainRot", 5000);
+    this->v_dead_zone_ = get_double("velocityDeadZone", 0.0001);
+  }
+
+  // Enable WorldPose + velocity components on canonical link so we can read them
+  gz::sim::Link canonical(this->canonical_link_entity_);
+  canonical.EnableVelocityChecks(_ecm, true);
+
+  if (this->use_force_feedback_ &&
+      this->force_link_entity_ != this->canonical_link_entity_)
+  {
+    gz::sim::Link force_lnk(this->force_link_entity_);
+    force_lnk.EnableVelocityChecks(_ecm, true);
+  }
+
+  // Init ROS2 node + executor
+  if (!rclcpp::ok()) {
+    rclcpp::init(0, nullptr);
+  }
+  this->ros_node_ = rclcpp::Node::make_shared("gz_planar_move");
+  this->executor_ =
+    std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+  this->executor_->add_node(this->ros_node_);
+  this->executor_thread_ = std::thread([this]() { this->executor_->spin(); });
+
+  // TF broadcaster
+  this->transform_broadcaster_ =
+    std::make_shared<tf2_ros::TransformBroadcaster>(this->ros_node_);
+
+  // Subscribe to cmd_vel
+  this->vel_sub_ =
+    this->ros_node_->create_subscription<geometry_msgs::msg::Twist>(
+      this->command_topic_, rclcpp::QoS(1),
+      std::bind(&GazeboRosPlanarForceMove::cmdVelCallback,
+                this, std::placeholders::_1));
+
+  // Advertise odometry
+  this->odometry_pub_ =
+    this->ros_node_->create_publisher<nav_msgs::msg::Odometry>(
+      this->odometry_topic_, rclcpp::QoS(1));
+
+  // Record initial pose
+  auto init_pose = gz::sim::worldPose(this->canonical_link_entity_, _ecm);
+  this->last_odom_pose_ = init_pose;
+  this->fixed_x_   = init_pose.Pos().X();
+  this->fixed_y_   = init_pose.Pos().Y();
+  this->fixed_yaw_ = init_pose.Rot().Yaw();
+
+  RCLCPP_INFO(this->ros_node_->get_logger(),
+    "GazeboRosPlanarForceMove loaded (force_feedback=%d)", use_force_feedback_);
+}
+
+void GazeboRosPlanarForceMove::PreUpdate(
+  const gz::sim::UpdateInfo &_info,
+  gz::sim::EntityComponentManager &_ecm)
+{
+  if (_info.paused) return;
+
+  std::lock_guard<std::mutex> lock(this->lock_);
+
+  gz::sim::Link canonical(this->canonical_link_entity_);
+
+  auto pose_opt = canonical.WorldPose(_ecm);
+  if (!pose_opt) return;
+  const gz::math::Pose3d &pose = *pose_opt;
+
+  if (this->use_force_feedback_) {
+    gz::sim::Link force_lnk(this->force_link_entity_);
+    auto lin_opt = force_lnk.WorldLinearVelocity(_ecm);
+    auto ang_opt = force_lnk.WorldAngularVelocity(_ecm);
+    if (!lin_opt || !ang_opt) return;
+
+    // Rotate world velocity to body frame
+    double yaw = pose.Rot().Yaw();
+    double cos_yaw = std::cos(yaw), sin_yaw = std::sin(yaw);
+    double rlin_x =  cos_yaw * lin_opt->X() + sin_yaw * lin_opt->Y();
+    double rlin_y = -sin_yaw * lin_opt->X() + cos_yaw * lin_opt->Y();
+    double rang_z = ang_opt->Z();
+
+    double f_x, f_y, t_rot;
+    double v_sqr = this->x_ * this->x_ + this->y_ * this->y_ + this->rot_ * this->rot_;
+
+    if (v_sqr <= this->v_dead_zone_) {
+      if (this->base_cmd_vel_) {
+        this->base_cmd_vel_ = false;
+        this->fixed_x_   = pose.Pos().X();
+        this->fixed_y_   = pose.Pos().Y();
+        this->fixed_yaw_ = pose.Rot().Yaw();
+      }
+      // Position-hold force in body frame
+      double wx = this->fixed_x_ - pose.Pos().X();
+      double wy = this->fixed_y_ - pose.Pos().Y();
+      f_x   =  cos_yaw * wx + sin_yaw * wy;
+      f_y   = -sin_yaw * wx + cos_yaw * wy;
+      t_rot = this->fixed_yaw_ - pose.Rot().Yaw();
+      if (t_rot >  M_PI) t_rot -= 2 * M_PI;
+      if (t_rot < -M_PI) t_rot += 2 * M_PI;
+
+      f_x   *= (this->gain_x_   * 4);
+      f_y   *= (this->gain_y_   * 4);
+      t_rot *= (this->gain_rot_ * 4);
+      f_x   += (this->x_   - rlin_x) * this->gain_x_   * 0.3;
+      f_y   += (this->y_   - rlin_y) * this->gain_y_   * 0.3;
+      t_rot += (this->rot_ - rang_z)  * this->gain_rot_ * 0.3;
+    } else {
+      this->base_cmd_vel_ = true;
+      f_x   = (this->x_   - rlin_x) * this->gain_x_;
+      f_y   = (this->y_   - rlin_y) * this->gain_y_;
+      t_rot = (this->rot_ - rang_z)  * this->gain_rot_;
+    }
+
+    // Apply force in world frame (rotate back from body frame)
+    double world_fx = cos_yaw * f_x - sin_yaw * f_y;
+    double world_fy = sin_yaw * f_x + cos_yaw * f_y;
+    force_lnk.AddWorldWrench(
+      _ecm,
+      gz::math::Vector3d(world_fx, world_fy, 0),
+      gz::math::Vector3d(0, 0, t_rot));
+
+  } else {
+    // Direct velocity mode
+    double yaw = pose.Rot().Yaw();
+    double cos_yaw = std::cos(yaw), sin_yaw = std::sin(yaw);
+    gz::sim::Link link(this->canonical_link_entity_);
+    link.SetLinearVelocity(_ecm,
+      gz::math::Vector3d(
+        this->x_ * cos_yaw - this->y_ * sin_yaw,
+        this->y_ * cos_yaw + this->x_ * sin_yaw,
+        0.0));
+    link.SetAngularVelocity(_ecm,
+      gz::math::Vector3d(0, 0, this->rot_));
+  }
+
+  // Odometry publishing
+  if (this->odometry_rate_ > 0.0) {
+    double secs_since =
+      std::chrono::duration<double>(_info.simTime - this->last_odom_publish_time_).count();
+    if (secs_since > 1.0 / this->odometry_rate_) {
+      publishOdometry(_ecm, secs_since);
+      this->last_odom_publish_time_ = _info.simTime;
+    }
+  }
+}
+
+void GazeboRosPlanarForceMove::cmdVelCallback(
+  const geometry_msgs::msg::Twist::SharedPtr cmd_msg)
+{
+  std::lock_guard<std::mutex> lock(this->lock_);
+  this->x_   = cmd_msg->linear.x;
+  this->y_   = this->enable_y_axis_ ? cmd_msg->linear.y : 0.0;
+  this->rot_ = cmd_msg->angular.z;
+}
+
+void GazeboRosPlanarForceMove::publishOdometry(
+  gz::sim::EntityComponentManager &_ecm,
+  double step_time)
+{
+  gz::sim::Link canonical(this->canonical_link_entity_);
+  auto pose_opt = canonical.WorldPose(_ecm);
+  if (!pose_opt) return;
+  const gz::math::Pose3d &pose = *pose_opt;
+
+  rclcpp::Time current_time = this->ros_node_->now();
+
+  // Publish TF
+  geometry_msgs::msg::TransformStamped t;
+  t.header.stamp    = current_time;
+  t.header.frame_id = this->odometry_frame_;
+  t.child_frame_id  = this->robot_base_frame_;
+  t.transform.translation.x = pose.Pos().X();
+  t.transform.translation.y = pose.Pos().Y();
+  t.transform.translation.z = pose.Pos().Z();
+  t.transform.rotation.x = pose.Rot().X();
+  t.transform.rotation.y = pose.Rot().Y();
+  t.transform.rotation.z = pose.Rot().Z();
+  t.transform.rotation.w = pose.Rot().W();
+  this->transform_broadcaster_->sendTransform(t);
+
+  // Build and publish odometry msg
+  this->odom_.pose.pose.position.x = pose.Pos().X();
+  this->odom_.pose.pose.position.y = pose.Pos().Y();
+  this->odom_.pose.pose.orientation.x = pose.Rot().X();
+  this->odom_.pose.pose.orientation.y = pose.Rot().Y();
+  this->odom_.pose.pose.orientation.z = pose.Rot().Z();
+  this->odom_.pose.pose.orientation.w = pose.Rot().W();
+  this->odom_.pose.covariance[0]  = 0.00001;
+  this->odom_.pose.covariance[7]  = 0.00001;
+  this->odom_.pose.covariance[14] = 1000000000000.0;
+  this->odom_.pose.covariance[21] = 1000000000000.0;
+  this->odom_.pose.covariance[28] = 1000000000000.0;
+  this->odom_.pose.covariance[35] = 0.001;
+
+  double lin_x = (pose.Pos().X() - this->last_odom_pose_.Pos().X()) / step_time;
+  double lin_y = (pose.Pos().Y() - this->last_odom_pose_.Pos().Y()) / step_time;
+
+  float last_yaw    = static_cast<float>(this->last_odom_pose_.Rot().Yaw());
+  float current_yaw = static_cast<float>(pose.Rot().Yaw());
+  while (current_yaw < last_yaw - M_PI) current_yaw += 2 * M_PI;
+  while (current_yaw > last_yaw + M_PI) current_yaw -= 2 * M_PI;
+  this->odom_.twist.twist.angular.z = (current_yaw - last_yaw) / step_time;
+
+  this->last_odom_pose_ = pose;
+
+  float yaw = static_cast<float>(pose.Rot().Yaw());
+  this->odom_.twist.twist.linear.x =
+     std::cos(yaw) * lin_x + std::sin(yaw) * lin_y;
+  this->odom_.twist.twist.linear.y =
+     std::cos(yaw) * lin_y - std::sin(yaw) * lin_x;
+
+  this->odom_.header.stamp       = current_time;
+  this->odom_.header.frame_id    = this->odometry_frame_;
+  this->odom_.child_frame_id     = this->robot_base_frame_;
+
+  this->odometry_pub_->publish(this->odom_);
+}
+
+}  // namespace gazebo

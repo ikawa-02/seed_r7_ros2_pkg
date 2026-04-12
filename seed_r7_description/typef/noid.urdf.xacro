@@ -1,6 +1,18 @@
 <?xml version="1.0"?>
 <robot name="SEED-Noid-Mover-typeF" xmlns:xacro="http://ros.org/wiki/xacro">
 
+  <!-- ros2_control hardware parameters (overridable from launch) -->
+  <xacro:arg name="port_upper"             default="/dev/aero_upper"/>
+  <xacro:arg name="port_lower"             default="/dev/aero_lower"/>
+  <xacro:arg name="robot_model_plugin"     default="seed_r7_robot_interface/typef"/>
+  <xacro:arg name="controller_rate"        default="50"/>
+  <xacro:arg name="overlap_scale"          default="2.0"/>
+  <xacro:arg name="joint_settings_file"    default=""/>
+  <!-- Gazebo controller params file (required when use_gazebo:=true) -->
+  <xacro:arg name="controller_params_file" default=""/>
+  <!-- Set to true to use gazebo_ros2_control hardware instead of real hardware -->
+  <xacro:arg name="use_gazebo" default="false"/>
+
   <!-- The following included files set up definitions of parts of the robot body -->
   <!-- wraps upperbody and hand-->
   <xacro:include filename="$(find seed_r7_description)/typef/noid-upper.urdf.xacro" />
@@ -32,15 +44,158 @@
  <xacro:gazebo_laser_sensor link_name="wheels_base_laser_link"
                             frame_name="wheels_base_laser_link" />
 
- <!-- joint control -->
- <xacro:gazebo_trajectory_controller />
+ <!-- joint control (Gazebo only) -->
+ <xacro:gazebo_trajectory_controller controller_params_file="$(arg controller_params_file)"/>
 
- <!-- mobile base -->
+ <!-- mobile base (Gazebo only) -->
  <xacro:gazebo_base_controller base_frame="base_link" />
+
+ <!-- ========== ros2_control hardware interface ========== -->
+ <ros2_control name="seed_r7_hardware" type="system">
+   <hardware>
+     <xacro:if value="$(arg use_gazebo)">
+       <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+     </xacro:if>
+     <xacro:unless value="$(arg use_gazebo)">
+       <plugin>seed_r7_ros_controller/RobotHW</plugin>
+       <param name="port_upper">$(arg port_upper)</param>
+       <param name="port_lower">$(arg port_lower)</param>
+       <param name="robot_model_plugin">$(arg robot_model_plugin)</param>
+       <param name="controller_rate">$(arg controller_rate)</param>
+       <param name="overlap_scale">$(arg overlap_scale)</param>
+       <param name="csv_config_dir">$(find seed_r7_description)/csv</param>
+       <param name="joint_settings_file">$(arg joint_settings_file)</param>
+     </xacro:unless>
+   </hardware>
+
+   <!-- upper body joints (22) -->
+   <joint name="waist_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="waist_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="waist_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_shoulder_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_shoulder_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_shoulder_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_elbow_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_wrist_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_wrist_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_wrist_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="l_thumb_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="neck_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="neck_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="neck_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_shoulder_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_shoulder_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_shoulder_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_elbow_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_wrist_y_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_wrist_p_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_wrist_r_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="r_thumb_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+
+   <!-- lower body joints (2) -->
+   <joint name="knee_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+   <joint name="ankle_joint">
+     <command_interface name="position"/>
+     <state_interface name="position"/>
+     <state_interface name="velocity"/>
+   </joint>
+ </ros2_control>
 
  <!-- mimic joints -->
  <gazebo>
-   <plugin name="mimic_updater" filename="libmimic_plugin.so">
+   <plugin filename="libmimic_plugin.so" name="mimicplugin::MimicPlugin">
      <!-- lifter -->
      <mimic joint="knee_joint"  offset="0.0" multiplier="-1.0"
             P="1000" I="0.01" D="1" i_max="0" i_min="0"

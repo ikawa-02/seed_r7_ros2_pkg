@@ -34,21 +34,21 @@
     <xacro:gazebo_joint_reference joint_name="${joint_name}" />
   </xacro:macro>
 
-  <xacro:macro name="gazebo_trajectory_controller" params="namespace:=/" >
+  <xacro:macro name="gazebo_trajectory_controller" params="controller_params_file namespace:=/" >
     <gazebo>
-      <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
-        <robotNamespace>${namespace}</robotNamespace>
-        <robotSimType>gazebo_ros_control/DefaultRobotHWSim</robotSimType>
-        <legacyModeNS>true</legacyModeNS>
+      <plugin filename="gz_ros2_control" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>${controller_params_file}</parameters>
+        <ros>
+          <namespace>${namespace}</namespace>
+        </ros>
       </plugin>
     </gazebo>
   </xacro:macro>
 
   <xacro:macro name="gazebo_base_controller" params="base_frame com_topic:=/cmd_vel odom_topic:=/odom odom_frame:=odom odom_rate:=20" >
-    <!-- Base control -->
+    <!-- Base control (gz-sim8) -->
     <gazebo>
-      <!--plugin name="cmd_vel_controller" filename="libgazebo_ros_planar_force_move.so"-->
-      <plugin name="cmd_vel_controller" filename="libgazebo_ros_planar_force_move.so">
+      <plugin filename="libgazebo_ros_planar_force_move.so" name="gazebo::GazeboRosPlanarForceMove">
         <commandTopic>cmd_vel</commandTopic>
         <odometryTopic>odom</odometryTopic>
         <odometryFrame>odom</odometryFrame>

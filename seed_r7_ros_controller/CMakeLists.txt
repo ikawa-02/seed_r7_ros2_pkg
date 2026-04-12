@@ -1,121 +1,93 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(seed_r7_ros_controller)
 
-
-# Load catkin and all dependencies required for this package
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  trajectory_msgs 
-  geometry_msgs
-  sensor_msgs 
-  nav_msgs 
-  control_msgs
-  move_base_msgs
-  control_toolbox
-  controller_manager
-  hardware_interface
-  transmission_interface
-  joint_limits_interface
-  message_generation
-  angles
-  urdf
-  tf
-  seed_r7_description
-  seed_smartactuator_sdk
-  pluginlib
-)
-
-# boost
-find_package(Boost REQUIRED COMPONENTS thread)
-if(NOT Boost_INCLUDE_DIRS)
-  message(FATAL "boost required but not supported")
-else()
-  include_directories(include ${Boost_INCLUDE_DIRS})
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(urdf REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(angles REQUIRED)
+find_package(seed_smartactuator_sdk REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
-# Generate services in the 'srv' folder
-# Below service should be removed in future
-add_message_files(
-  FILES
-  Pose.msg
-  RobotStatus.msg
-  DriverStatus.msg
-  RobotInfo.msg
+# ---- Messages and Services ----
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/DriverStatus.msg"
+  "msg/Pose.msg"
+  "msg/RobotInfo.msg"
+  "msg/RobotStatus.msg"
+  "srv/HandControl.srv"
+  "srv/LedControl.srv"
+  "srv/SetInitialPose.srv"
+  "srv/ResetRobotStatus.srv"
+  "srv/ResetOdom.srv"
+  DEPENDENCIES std_msgs geometry_msgs
 )
-add_service_files(
-   FILES
-   HandControl.srv
-   LedControl.srv
-   SetInitialPose.srv
-   ResetRobotStatus.srv
-   ResetOdom.srv
+
+# ---- Hardware Interface Plugin (SystemInterface) ----
+add_library(seed_r7_hardware_interface SHARED
+  src/seed_r7_robot_hardware.cpp
+  src/seed_r7_upper_controller.cpp
+  src/seed_r7_lower_controller.cpp
+  src/stroke_converter_base.cpp
+  src/seed_r7_mover_controller.cpp
+  src/seed_r7_hand_controller.cpp
 )
-generate_messages(
-  DEPENDENCIES
+target_include_directories(seed_r7_hardware_interface PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(seed_r7_hardware_interface
+  rclcpp
+  rclcpp_lifecycle
   std_msgs
   geometry_msgs
-  trajectory_msgs
+  nav_msgs
+  hardware_interface
+  pluginlib
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  urdf
+  diagnostic_updater
+  angles
+  seed_smartactuator_sdk
+)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(seed_r7_hardware_interface "${cpp_typesupport_target}")
+
+pluginlib_export_plugin_description_file(hardware_interface seed_r7_hardware.xml)
+
+# ---- Install ----
+install(
+  TARGETS seed_r7_hardware_interface
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(DIRECTORY include/ DESTINATION include)
+install(FILES seed_r7_hardware.xml DESTINATION share/${PROJECT_NAME})
+
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
 )
 
-
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES seed_r7_hand_controllers
-  CATKIN_DEPENDS
-    roscpp
-    std_msgs
-    trajectory_msgs 
-    sensor_msgs
-    geometry_msgs 
-    nav_msgs 
-    control_msgs 
-    move_base_msgs
-    controller_manager
-    control_toolbox
-    hardware_interface
-    transmission_interface
-    joint_limits_interface
-    angles
-    urdf
-    tf
-    seed_r7_description
-    seed_smartactuator_sdk
-    pluginlib
-)
-
-link_directories(${catkin_LIBRARY_DIRS})
-
-include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
-
-add_definitions(-std=c++11)  # should be c++14 for melodic
-
-# Library
-add_library(seed_r7_hand_controllers src/seed_r7_hand_controller.cpp)
-add_dependencies(seed_r7_hand_controllers ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
-target_link_libraries(seed_r7_hand_controllers ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-
-# Executable
-add_executable(${PROJECT_NAME} src/seed_r7_ros_controller.cpp
-                               src/seed_r7_robot_hardware.cpp
-                               src/seed_r7_mover_controller.cpp
-                               src/seed_r7_upper_controller.cpp
-                               src/seed_r7_lower_controller.cpp
-                               src/stroke_converter_base.cpp
-                               )
-target_link_libraries(${PROJECT_NAME} seed_r7_hand_controllers
-                                      ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-
-# Install
-install(TARGETS ${PROJECT_NAME} seed_r7_hand_controllers
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-)
+ament_package()

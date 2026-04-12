@@ -1,45 +1,63 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(seed_r7_samples)
 
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  seed_r7_ros_controller
-  moveit_core moveit_ros_planning moveit_ros_planning_interface
-)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+# Transitive deps of seed_r7_ros_controller exported targets
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(urdf REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(angles REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(seed_r7_ros_controller REQUIRED)
 
-catkin_package()
-
-link_directories(${catkin_LIBRARY_DIRS})
-
-include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
-
-add_definitions(-std=c++11)  # should be c++14 for melodic
-
-if (CATKIN_ENABLE_TESTING)
-  find_package(roslaunch REQUIRED)
-  roslaunch_add_file_check(launch/demo.launch)
-  find_package(rostest REQUIRED)
-  add_rostest(test/demo.test)
-endif()
-
-# Executable
+# ---- moveit_sample_node ----
 add_executable(moveit_sample_node src/moveit_sample.cpp)
-target_link_libraries(moveit_sample_node ${catkin_LIBRARIES} )
+ament_target_dependencies(moveit_sample_node
+  rclcpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  geometry_msgs
+  moveit_ros_planning_interface
+  moveit_core
+)
 
+# ---- record_robot_info_node ----
 add_executable(record_robot_info_node src/record_robot_info.cpp)
-target_link_libraries(record_robot_info_node ${catkin_LIBRARIES} )
-
-# Install
-install(DIRECTORY config launch scripts 
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+ament_target_dependencies(record_robot_info_node
+  rclcpp
+  ament_index_cpp
+  seed_r7_ros_controller
 )
 
-catkin_install_python(PROGRAMS scripts/demo.py
-    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-
-install(TARGETS moveit_sample_node
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+install(TARGETS
+  moveit_sample_node
+  record_robot_info_node
+  DESTINATION lib/${PROJECT_NAME}
 )
+
+# ---- Python scripts ----
+install(PROGRAMS scripts/demo.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# ---- config / launch ----
+install(DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+ament_package()

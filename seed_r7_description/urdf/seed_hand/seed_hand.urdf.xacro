@@ -57,8 +57,9 @@
     </collision> </xacro:unless>
     <inertial>
       <mass value="0.1" />
-      <origin xyz="0 0 -0.023" rpy="0 -0 0"/>
-      <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0" />
+      <origin xyz="0 0 -0.023" rpy="0 0 0"/>
+      <!-- box 0.020 x 0.0615 x 0.054 inertia (x10 safety margin) -->
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0" />
     </inertial>
   </link>
   <xacro:gazebo_link_reference link_name="${prefix}_indextbase_link" />
@@ -66,8 +67,8 @@
   <link name="${prefix}_indexmid_link"> <!-- dummy link, backward compatibility ??? -->
     <inertial>
       <mass value="0.1" />
-      <origin xyz="0 0 -0.023" rpy="0 -0 0"/>
-      <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0" />
+      <origin xyz="0 0 -0.023" rpy="0 0 0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0" />
     </inertial>
   </link>
   <xacro:gazebo_link_reference link_name="${prefix}_indexmid_link" />
@@ -88,8 +89,10 @@
     </collision> </xacro:unless>
     <inertial>
       <mass value="0.07" />
-      <origin xyz="0 ${reflect * 0.014} -0.0225" rpy="0 -0 0"/>
-      <inertia ixx="0.0014" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0" />
+      <origin xyz="0 ${reflect * 0.014} -0.0225" rpy="0 0 0"/>
+      <!-- Fixed: was ixx=0.0014 which violated triangle inequality (ixx > iyy+izz) -->
+      <!-- box 0.020 x 0.0596 x 0.065 inertia (x10 safety margin) -->
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0" />
     </inertial>
   </link>
   <xacro:gazebo_link_reference link_name="${prefix}_indexend_link" />
@@ -110,8 +113,9 @@
     </collision> </xacro:unless>
     <inertial>
       <mass value="0.1" />
-      <origin xyz="0 0 -0.04" rpy="0 -0 0"/>
-      <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0" />
+      <origin xyz="0 0 -0.04" rpy="0 0 0"/>
+      <!-- box 0.032 x 0.054 x 0.105 inertia (x10 safety margin) -->
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0" />
     </inertial>
   </link>
   <xacro:gazebo_link_reference link_name="${prefix}_thumb_link" />

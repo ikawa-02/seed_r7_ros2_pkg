@@ -1,10 +1,10 @@
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 #include "stroke_converter.h"
 
 void seed_converter::TypeG::makeTables()
 {
-  ROS_INFO("upper's csv_dir is %s", upper_csv_dir.c_str());
-  ROS_INFO("lifter's csv_dir is %s", lifter_csv_dir.c_str());
+  RCLCPP_INFO(logger_, "upper's csv_dir is %s", upper_csv_dir.c_str());
+  RCLCPP_INFO(logger_, "lifter's csv_dir is %s", lifter_csv_dir.c_str());
 
   if (makeTable(shoulder_p.table, upper_csv_dir + "/shoulder_p.csv"))
     makeInvTable(shoulder_p.inv_table, shoulder_p.table);

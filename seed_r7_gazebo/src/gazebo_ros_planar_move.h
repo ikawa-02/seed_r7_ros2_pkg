@@ -1,112 +1,92 @@
-/*
- * Copyright 2013 Open Source Robotics Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
-*/
+#pragma once
 
-/*
- * Desc: Simple model controller that uses a twist message to move a robot on
- *       the xy plane.
- * Author: Piyush Khandelwal
- * Date: 29 July 2013
- */
+#include <memory>
+#include <string>
+#include <mutex>
+#include <thread>
 
-/*
- * temporary copied from gazebo_plugins
- */
+#include <gz/sim/System.hh>
+#include <gz/sim/Model.hh>
+#include <gz/sim/Link.hh>
+#include <gz/sim/EntityComponentManager.hh>
+#include <gz/sim/EventManager.hh>
+#include <gz/sim/Types.hh>
+#include <gz/math/Pose3.hh>
+#include <gz/math/Vector3.hh>
+#include <sdf/Element.hh>
 
-#ifndef GAZEBO_ROS_PLANAR_MOVE_HH
-#define GAZEBO_ROS_PLANAR_MOVE_HH
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
-#include <boost/bind.hpp>
-#include <boost/thread.hpp>
-#include <map>
+namespace gazebo
+{
 
-/// Gazebo
-#include <gazebo/common/common.hh>
-#include <gazebo/physics/physics.hh>
-#include <sdf/sdf.hh>
+class GazeboRosPlanarForceMove :
+  public gz::sim::System,
+  public gz::sim::ISystemConfigure,
+  public gz::sim::ISystemPreUpdate
+{
+public:
+  GazeboRosPlanarForceMove();
+  ~GazeboRosPlanarForceMove() override;
 
-/// ROS
-#include <geometry_msgs/Twist.h>
-#include <nav_msgs/OccupancyGrid.h>
-#include <nav_msgs/Odometry.h>
-#include <ros/advertise_options.h>
-#include <ros/callback_queue.h>
-#include <ros/ros.h>
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
+  void Configure(
+    const gz::sim::Entity &_entity,
+    const std::shared_ptr<const sdf::Element> &_sdf,
+    gz::sim::EntityComponentManager &_ecm,
+    gz::sim::EventManager &_eventMgr) override;
 
-namespace gazebo {
+  void PreUpdate(
+    const gz::sim::UpdateInfo &_info,
+    gz::sim::EntityComponentManager &_ecm) override;
 
-  class GazeboRosPlanarForceMove : public ModelPlugin {
+private:
+  void publishOdometry(
+    gz::sim::EntityComponentManager &_ecm,
+    double step_time);
 
-    public:
-      GazeboRosPlanarForceMove();
-      ~GazeboRosPlanarForceMove();
-      void Load(physics::ModelPtr parent, sdf::ElementPtr sdf);
+  void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr cmd_msg);
 
-    protected:
-      virtual void UpdateChild();
-      virtual void FiniChild();
+  gz::sim::Model model_{gz::sim::kNullEntity};
+  gz::sim::Entity canonical_link_entity_{gz::sim::kNullEntity};
 
-    private:
-      void publishOdometry(double step_time);
+  rclcpp::Node::SharedPtr ros_node_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> transform_broadcaster_;
+  rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
+  std::thread executor_thread_;
+  nav_msgs::msg::Odometry odom_;
 
-      physics::ModelPtr parent_;
-      event::ConnectionPtr update_connection_;
+  std::mutex lock_;
 
-      boost::shared_ptr<ros::NodeHandle> rosnode_;
-      ros::Publisher odometry_pub_;
-      ros::Subscriber vel_sub_;
-      boost::shared_ptr<tf::TransformBroadcaster> transform_broadcaster_;
-      nav_msgs::Odometry odom_;
-      std::string tf_prefix_;
+  std::string command_topic_{"cmd_vel"};
+  std::string odometry_topic_{"odom"};
+  std::string odometry_frame_{"odom"};
+  std::string robot_base_frame_{"base_link"};
+  double odometry_rate_{20.0};
+  bool enable_y_axis_{true};
 
-      boost::mutex lock;
+  double x_{0.0};
+  double y_{0.0};
+  double rot_{0.0};
 
-      std::string robot_namespace_;
-      std::string command_topic_;
-      std::string odometry_topic_;
-      std::string odometry_frame_;
-      std::string robot_base_frame_;
-      double odometry_rate_;
+  bool use_force_feedback_{false};
+  gz::sim::Entity force_link_entity_{gz::sim::kNullEntity};
+  double gain_x_{20000};
+  double gain_y_{20000};
+  double gain_rot_{5000};
+  double v_dead_zone_{0.0001};
+  bool base_cmd_vel_{true};
+  double fixed_x_{0.0};
+  double fixed_y_{0.0};
+  double fixed_yaw_{0.0};
 
-      // Custom Callback Queue
-      ros::CallbackQueue queue_;
-      boost::thread callback_queue_thread_;
-      void QueueThread();
+  std::chrono::steady_clock::duration last_odom_publish_time_{};
+  gz::math::Pose3d last_odom_pose_;
+};
 
-      // command velocity callback
-      void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg);
-
-      double x_;
-      double y_;
-      double rot_;
-      bool alive_;
-      bool enable_y_axis_; ///< Enable Y-axis movement.
-      common::Time last_odom_publish_time_;
-      ignition::math::Pose3d last_odom_pose_;
-
-      bool use_force_feedback_;
-      physics::LinkPtr robot_link_;
-      double gain_x_, gain_y_, gain_rot_;
-      double v_dead_zone_;
-      bool base_cmd_vel_;
-      double fixed_x_, fixed_y_, fixed_yaw_;
-  };
-
-}
-
-#endif /* end of include guard: GAZEBO_ROS_PLANAR_MOVE_HH */
+}  // namespace gazebo

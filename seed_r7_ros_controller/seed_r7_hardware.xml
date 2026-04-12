@@ -1,0 +1,7 @@
+<library path="seed_r7_hardware_interface">
+  <class name="seed_r7_ros_controller/RobotHW"
+         type="robot_hardware::RobotHW"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>SEED-Solutions R7 Robot Hardware Interface (ros2_control SystemInterface)</description>
+  </class>
+</library>

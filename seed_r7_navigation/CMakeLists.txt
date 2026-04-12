@@ -1,26 +1,14 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(seed_r7_navigation)
 
-find_package(catkin REQUIRED)
+find_package(ament_cmake REQUIRED)
 
-catkin_package(
-  CATKIN_DEPENDS
-  rospy
+install(PROGRAMS scripts/dummy_scan.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
-
-catkin_python_setup()
-
-if (CATKIN_ENABLE_TESTING)
-  find_package(roslaunch REQUIRED)
-  roslaunch_add_file_check(tests/roslaunch_test_navigation.xml)
-endif()
-
-install(
-    DIRECTORY config launch maps
-    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+install(DIRECTORY config launch maps
+  DESTINATION share/${PROJECT_NAME}
 )
 
-catkin_install_python(PROGRAMS scripts/dummy_scan.py
-    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-
+ament_package()

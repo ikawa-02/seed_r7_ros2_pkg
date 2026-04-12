@@ -8,7 +8,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 
 namespace seed_converter
@@ -39,10 +39,10 @@ public:
   StrokeConverter();
   ~StrokeConverter();
 
-  bool initialize(ros::NodeHandle& _nh);
-  virtual void makeTables()=0;
-  virtual void Angle2Stroke(std::vector<int16_t>& _strokes, const std::vector<double>& _angles)=0;
-  virtual void Stroke2Angle(std::vector<double>& _angles, const std::vector<int16_t>& _strokes)=0;
+  bool initialize(rclcpp::Node::SharedPtr node);
+  virtual void makeTables() = 0;
+  virtual void Angle2Stroke(std::vector<int16_t>& _strokes, const std::vector<double>& _angles) = 0;
+  virtual void Stroke2Angle(std::vector<double>& _angles, const std::vector<int16_t>& _strokes) = 0;
 
 protected:
   bool makeTable(std::vector<StrokeMap>& _table, const std::string _file_name);
@@ -53,9 +53,10 @@ protected:
   DiffJoint setDualAngleToStroke
   (const float _r_angle, const float _p_angle,
    const std::vector<StrokeMap>& _r_table, const std::vector<StrokeMap>& _p_table,
-   const bool _is_pitch=false);
+   const bool _is_pitch = false);
 
   std::string file_path_;
+  rclcpp::Logger logger_ = rclcpp::get_logger("stroke_converter");
 };
 
 }

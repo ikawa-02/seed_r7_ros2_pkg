@@ -1,6 +1,6 @@
-<library path="lib/libseed_r7_robot_interface_typef">
+<library path="seed_r7_robot_interface_typef">
   <class name="seed_r7_robot_interface/typef" type="seed_converter::TypeF"
-         base_class_type="StrokeConverter">
+         base_class_type="seed_converter::StrokeConverter">
     <description>TypeF stroke converter plugin.</description>
   </class>
 </library>

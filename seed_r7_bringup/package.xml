@@ -1,20 +1,26 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>seed_r7_bringup</name>
   <version>0.3.4</version>
 
-  <description>The seed_r7_bringup package</description>
-
+  <description>The seed_r7_bringup package (ROS2 Jazzy)</description>
 
   <maintainer email="hi.kondo@thk.co.jp">hi.kondo</maintainer>
 
   <license>BSD</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>robot_state_publisher</depend>
-  <depend>seed_r7_typef_moveit_config</depend>
-  <depend>seed_r7_typeg_moveit_config</depend>
-  <depend>controller_manager</depend>
-  <depend>seed_r7_ros_controller</depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>seed_r7_ros_controller</exec_depend>
+
+  <!-- MoveIt2 config packages (migrated separately) -->
+  <!-- <exec_depend>seed_r7_typef_moveit_config</exec_depend> -->
+  <!-- <exec_depend>seed_r7_typeg_moveit_config</exec_depend> -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>

@@ -1,135 +1,123 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ## @author Hiroaki Yaguchi JSK
 
-import rospy
-import tf
 import math
+import rclpy
+from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import OccupancyGrid, MapMetaData
+from nav_msgs.msg import OccupancyGrid
+import tf2_ros
 
-# [INFO] [WallTime: 1508148230.485155] msg:
-# [INFO] [WallTime: 1508148230.485310]   angle_min: -1.57079637051
-# [INFO] [WallTime: 1508148230.485466]   angle_max: 1.57079637051
-# [INFO] [WallTime: 1508148230.485623]   angle_increment: 0.00436332309619
-# [INFO] [WallTime: 1508148230.485770]   time_increment: 1.73611151695e-05
-# [INFO] [WallTime: 1508148230.485927]   scan_time: 0.0250000003725
-# [INFO] [WallTime: 1508148230.486063]   size(ranges): 721
-# [INFO] [WallTime: 1508148230.486205]   approx. size: 721
-#range_min: 0.019999999553
-#range_max: 30.0
 
-## @brief publiush dummy scan range
-class DummyScan:
+class DummyScan(Node):
     def __init__(self):
-        self.pub = rospy.Publisher('scan', LaserScan, queue_size = 1)
-        self.tf_listener = tf.TransformListener()
+        super().__init__('dummy_scan')
+
+        self.pub_ = self.create_publisher(LaserScan, 'scan', 1)
+
+        self.tf_buffer_   = tf2_ros.Buffer()
+        self.tf_listener_ = tf2_ros.TransformListener(self.tf_buffer_, self)
 
         self.pi2 = math.pi * 2
-        self.pih = math.pi / 2
         self.laser_height = 0.2344
         self.mapgrid_list = []
 
-        # emurate URG
-        self.scan = LaserScan()
-        self.scan.header.frame_id = 'wheels_base_laser_link'
-        self.scan.angle_min = -1.57079637051
-        self.scan.angle_max = 1.57079637051
-        self.scan.angle_increment = 0.00436332309619
-        self.scan.time_increment = 1.73611151695e-05
-        self.scan.scan_time = 0.0250000003725
-        self.scan.range_min = 0.019999999553
-        self.scan.range_max = 30.0
-        # ranges_size = 721
-        self.ranges_size = int(1.0 +
-                               (self.scan.angle_max - self.scan.angle_min)
-                               / self.scan.angle_increment)
+        # emulate URG
+        self.scan_ = LaserScan()
+        self.scan_.header.frame_id = 'wheels_base_laser_link'
+        self.scan_.angle_min       = -1.57079637051
+        self.scan_.angle_max       =  1.57079637051
+        self.scan_.angle_increment =  0.00436332309619
+        self.scan_.time_increment  =  1.73611151695e-05
+        self.scan_.scan_time       =  0.0250000003725
+        self.scan_.range_min       =  0.019999999553
+        self.scan_.range_max       = 30.0
 
-        # subscribe map once
-        self.sub_map = rospy.Subscriber('map', OccupancyGrid,
-                                        self.map_to_points)
+        self.ranges_size_ = int(
+            1.0 + (self.scan_.angle_max - self.scan_.angle_min)
+            / self.scan_.angle_increment)
 
-    ## @brief make constant range, if map and tf have not been recieved
-    def make_constant_range(self):
-        for i in range(self.ranges_size):
-            self.scan.ranges.append(10.0)
+        # Subscribe to map once
+        self.sub_map_ = self.create_subscription(
+            OccupancyGrid, 'map', self._map_callback, 1)
 
-    ## @brief map to points
-    ## @param msg nav_msgs/OccupancyGrid
-    def map_to_points(self, msg):
-        map_info = msg.info
-        cr = math.cos(math.acos(map_info.origin.orientation.w) * 2.0)
-        sr = math.sqrt(1.0 - cr * cr)
+        # Publish at 40 Hz
+        self.timer_ = self.create_timer(1.0 / 40.0, self._publish)
+
+    def _map_callback(self, msg):
+        info = msg.info
+        cr = math.cos(math.acos(info.origin.orientation.w) * 2.0)
+        sr = math.sqrt(max(0.0, 1.0 - cr * cr))
         self.mapgrid_list = []
-        for y in range(map_info.height):
-            yidx = y * map_info.width
-            my = y * map_info.resolution + map_info.origin.position.y
-            for x in range(map_info.width):
-                val = msg.data[x + yidx]
-                if val >= 90:
-                    mx = x * map_info.resolution + map_info.origin.position.x
-                    pt = [mx * cr - my * sr,
-                          mx * sr + my * cr,
-                          self.laser_height]
-                    self.mapgrid_list.append(pt)
-        # if recievved once unregister
-        self.sub_map.unregister()
+        for y in range(info.height):
+            yidx = y * info.width
+            my = y * info.resolution + info.origin.position.y
+            for x in range(info.width):
+                if msg.data[x + yidx] >= 90:
+                    mx = x * info.resolution + info.origin.position.x
+                    self.mapgrid_list.append([
+                        mx * cr - my * sr,
+                        mx * sr + my * cr,
+                        self.laser_height,
+                    ])
+        # Unsubscribe after first map
+        self.destroy_subscription(self.sub_map_)
 
-    ## @brief make range data from map and current pose
-    def make_map_range(self):
-        laser_pos = (0, 0, 0)
-        laser_theta = 0
+    def _make_map_range(self):
+        laser_pos   = (0.0, 0.0, 0.0)
+        laser_theta = 0.0
         try:
-            t = rospy.Time()
-            laser_pos, null = self.tf_listener.lookupTransform(
-                '/map',
-                'wheels_base_laser_link',
-                t)
-            # tf orientation is screwed up, calculate from base->laser
-            base_pos, null = self.tf_listener.lookupTransform(
-                '/map',
-                'base_link',
-                t)
-            laser_theta = math.atan2(laser_pos[1] - base_pos[1], laser_pos[0] - base_pos[0])
-        except (Exception):
-            None
+            t = self.tf_buffer_.lookup_transform(
+                'map', 'wheels_base_laser_link',
+                rclpy.time.Time())
+            laser_pos = (
+                t.transform.translation.x,
+                t.transform.translation.y,
+                t.transform.translation.z,
+            )
+            t_base = self.tf_buffer_.lookup_transform(
+                'map', 'base_link',
+                rclpy.time.Time())
+            laser_theta = math.atan2(
+                laser_pos[1] - t_base.transform.translation.y,
+                laser_pos[0] - t_base.transform.translation.x,
+            )
+        except Exception:
+            pass
 
-        if len(self.mapgrid_list) < 0:
-            # create constant range if map has not been revieved yet
-            self.make_constant_range()
-        else:
-            self.scan.ranges = []
-            for i in range(self.ranges_size):
-                self.scan.ranges.append(0.0)
+        self.scan_.ranges = [0.0] * self.ranges_size_
 
-            for mp in self.mapgrid_list:
-                lx = mp[0] - laser_pos[0]
-                ly = mp[1] - laser_pos[1]
-                lrange = math.sqrt(lx * lx + ly * ly)
-                ltheta = math.atan2(ly, lx) - laser_theta
-                if ltheta > math.pi:
-                    ltheta = ltheta - self.pi2
-                elif ltheta < -math.pi:
-                    ltheta = ltheta + self.pi2
+        for mp in self.mapgrid_list:
+            lx = mp[0] - laser_pos[0]
+            ly = mp[1] - laser_pos[1]
+            lrange = math.sqrt(lx * lx + ly * ly)
+            ltheta = math.atan2(ly, lx) - laser_theta
+            if ltheta > math.pi:
+                ltheta -= self.pi2
+            elif ltheta < -math.pi:
+                ltheta += self.pi2
 
-                if ltheta >= self.scan.angle_min and ltheta <= self.scan.angle_max:
-                    li = int((ltheta - self.scan.angle_min) / self.scan.angle_increment)
-                    if self.scan.ranges[li] < 1e-5:
-                        self.scan.ranges[li] = lrange
-                    elif self.scan.ranges[li] > lrange:
-                        self.scan.ranges[li] = lrange
+            if self.scan_.angle_min <= ltheta <= self.scan_.angle_max:
+                li = int((ltheta - self.scan_.angle_min)
+                         / self.scan_.angle_increment)
+                if li < self.ranges_size_:
+                    if self.scan_.ranges[li] < 1e-5 or self.scan_.ranges[li] > lrange:
+                        self.scan_.ranges[li] = lrange
 
-    # @brief create and publish range data
-    def publish(self):
-        self.make_map_range()
-        self.scan.header.stamp = rospy.get_rostime()
-        self.pub.publish(self.scan)
+    def _publish(self):
+        self._make_map_range()
+        self.scan_.header.stamp = self.get_clock().now().to_msg()
+        self.pub_.publish(self.scan_)
+
+
+def main():
+    rclpy.init()
+    node = DummyScan()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
 
 if __name__ == '__main__':
-    rospy.init_node('dummy_scan', anonymous = True)
-    dummy_scan = DummyScan()
-
-    rate = rospy.Rate(40)
-    while not rospy.is_shutdown():
-        dummy_scan.publish()
-        rate.sleep()
+    main()

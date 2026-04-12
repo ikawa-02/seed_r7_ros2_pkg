@@ -9,15 +9,23 @@ seed_converter::StrokeConverter::~StrokeConverter()
 {
 }
 
-bool seed_converter::StrokeConverter::initialize(ros::NodeHandle& _nh)
+bool seed_converter::StrokeConverter::initialize(rclcpp::Node::SharedPtr node)
 {
-  if (!_nh.hasParam("csv_config_dir")) return false;
+  logger_ = node->get_logger();
 
-  _nh.getParam("csv_config_dir", file_path_);  // e.g. $(find package)/config/csv
+  if (!node->has_parameter("csv_config_dir")) {
+    node->declare_parameter<std::string>("csv_config_dir", "");
+  }
+  node->get_parameter("csv_config_dir", file_path_);
 
-  ROS_INFO("start to make stroke convert table");
+  if (file_path_.empty()) {
+    RCLCPP_ERROR(logger_, "csv_config_dir parameter is not set");
+    return false;
+  }
+
+  RCLCPP_INFO(logger_, "start to make stroke convert table");
   makeTables();
-  ROS_INFO("finish to make stroke convert table");
+  RCLCPP_INFO(logger_, "finish to make stroke convert table");
 
   return true;
 }
@@ -29,7 +37,7 @@ bool seed_converter::StrokeConverter::makeTable
 
   std::ifstream ifs_0(file_path_ + "/" + _file_name, std::ios_base::in);
   if (!ifs_0.is_open()) {
-    ROS_ERROR("can't find %s at %s", _file_name.c_str(), file_path_.c_str());
+    RCLCPP_ERROR(logger_, "can't find %s at %s", _file_name.c_str(), file_path_.c_str());
     return false;
   }
 
@@ -37,21 +45,21 @@ bool seed_converter::StrokeConverter::makeTable
   while (getline(ifs_0, str)) {
     size_t pos = str.find(',');
     if (pos == std::string::npos) {
-      ROS_ERROR("%s has invalid structure", _file_name.c_str());
+      RCLCPP_ERROR(logger_, "%s has invalid structure", _file_name.c_str());
       return false;
     }
     seed_converter::StrokeMap sm;
     sm.angle = std::stof(str.substr(0, pos));
-    sm.stroke = std::stof(str.substr(pos+1));
+    sm.stroke = std::stof(str.substr(pos + 1));
     _table.push_back(sm);
   }
 
-  //sort in ascending order
+  // sort in ascending order
   if (_table.at(1).angle < _table.at(0).angle) std::reverse(_table.begin(), _table.end());
 
   _table.front().range = 0;
-  for (size_t i = 1; i < _table.size() ; ++i) {
-    _table.at(i).range = _table.at(i).stroke - _table.at(i-1).stroke;
+  for (size_t i = 1; i < _table.size(); ++i) {
+    _table.at(i).range = _table.at(i).stroke - _table.at(i - 1).stroke;
   }
 
   return true;
@@ -64,13 +72,13 @@ void seed_converter::StrokeConverter::makeInvTable
   _inv_table.clear();
   _inv_table = _table;
 
-  //sort in ascending order
-  if (_table.at(1).stroke < _table.at(0).stroke) std::reverse(_inv_table.begin(),_inv_table.end());
+  // sort in ascending order
+  if (_table.at(1).stroke < _table.at(0).stroke) std::reverse(_inv_table.begin(), _inv_table.end());
 
   _inv_table.front().range = 0;
   int sign = (_table.at(1).range < 0 ? -1 : 1);
-  for (size_t i = 1; i < _inv_table.size() ; ++i) {
-    _inv_table.at(i).range = sign * (_inv_table.at(i).stroke - _inv_table.at(i-1).stroke);
+  for (size_t i = 1; i < _inv_table.size(); ++i) {
+    _inv_table.at(i).range = sign * (_inv_table.at(i).stroke - _inv_table.at(i - 1).stroke);
   }
 }
 
@@ -79,11 +87,11 @@ float seed_converter::StrokeConverter::setAngleToStroke
 {
   seed_converter::StrokeMap angle;
   angle.angle = _angle;
-  //limit
+  // limit
   if (_angle < _table.front().angle) angle.angle = _table.front().angle;
   if (_angle > _table.back().angle) angle.angle = _table.back().angle;
 
-  auto ref = std::upper_bound(_table.begin()+1, _table.end()-1, angle,
+  auto ref = std::upper_bound(_table.begin() + 1, _table.end() - 1, angle,
                               [](seed_converter::StrokeMap x, seed_converter::StrokeMap y) ->
                               bool {
                                 return x.angle < y.angle;
@@ -97,11 +105,11 @@ float seed_converter::StrokeConverter::setStrokeToAngle
 {
   seed_converter::StrokeMap stroke;
   stroke.stroke = _stroke;
-  //limit
+  // limit
   if (_stroke < _inv_table.front().stroke) stroke.stroke = _inv_table.front().stroke;
   if (_stroke > _inv_table.back().stroke) stroke.stroke = _inv_table.back().stroke;
 
-  auto ref = std::upper_bound(_inv_table.begin()+1, _inv_table.end()-1, stroke,
+  auto ref = std::upper_bound(_inv_table.begin() + 1, _inv_table.end() - 1, stroke,
                               [](seed_converter::StrokeMap x, seed_converter::StrokeMap y) ->
                               bool {
                                 return x.stroke < y.stroke;

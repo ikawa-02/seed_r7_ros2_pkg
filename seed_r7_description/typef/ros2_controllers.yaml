@@ -1,0 +1,127 @@
+# ros2_controllers.yaml  (typef)
+# ROS1 controller_settings.yaml を ROS2 ros2_control 形式に変換
+#
+# 変更点:
+#   - controller_manager.ros__parameters 以下にコントローラ登録セクション追加
+#   - position_controllers/JointTrajectoryController
+#     → joint_trajectory_controller/JointTrajectoryController
+#   - joint_state_controller → joint_state_broadcaster (ros2_controllers)
+#   - 各コントローラに command_interfaces / state_interfaces を明示
+
+controller_manager:
+  ros__parameters:
+    update_rate: 50  # [Hz]
+
+    # joint_state_controller -> joint_state_broadcaster (ROS2)
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    rarm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    larm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    head_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    waist_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    lifter_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    lhand_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    rhand_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+# ---- 各コントローラのパラメータ ----
+
+rarm_controller:
+  ros__parameters:
+    joints:
+      - r_shoulder_p_joint
+      - r_shoulder_r_joint
+      - r_shoulder_y_joint
+      - r_elbow_joint
+      - r_wrist_y_joint
+      - r_wrist_p_joint
+      - r_wrist_r_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+larm_controller:
+  ros__parameters:
+    joints:
+      - l_shoulder_p_joint
+      - l_shoulder_r_joint
+      - l_shoulder_y_joint
+      - l_elbow_joint
+      - l_wrist_y_joint
+      - l_wrist_p_joint
+      - l_wrist_r_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+head_controller:
+  ros__parameters:
+    joints:
+      - neck_y_joint
+      - neck_p_joint
+      - neck_r_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+waist_controller:
+  ros__parameters:
+    joints:
+      - waist_y_joint
+      - waist_p_joint
+      - waist_r_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+lifter_controller:
+  ros__parameters:
+    joints:
+      - knee_joint
+      - ankle_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+lhand_controller:
+  ros__parameters:
+    joints:
+      - l_thumb_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+rhand_controller:
+  ros__parameters:
+    joints:
+      - r_thumb_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity

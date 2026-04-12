@@ -1,158 +1,159 @@
 /// @author Sasabuchi Kazuhiro, Shintaro Hori, Hiroaki Yaguchi
 #include "seed_r7_ros_controller/seed_r7_mover_controller.h"
+#include "seed_r7_ros_controller/seed_r7_robot_hardware.h"
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
-robot_hardware::MoverController::MoverController
-(const ros::NodeHandle& _nh, robot_hardware::RobotHW *_in_hw) :
-  nh_(_nh),hw_(_in_hw),
-  vx_(0), vy_(0), vth_(0), x_(0), y_(0), th_(0), en_x_(0), en_y_(0), en_th_(0)//, base_spinner_(1, &base_queue_)
+robot_hardware::MoverController::MoverController(
+  rclcpp::Node::SharedPtr node, robot_hardware::RobotHW* _in_hw)
+  : node_(node), hw_(_in_hw),
+    vx_(0), vy_(0), vth_(0), x_(0), y_(0), th_(0),
+    en_x_(0), en_y_(0), en_th_(0)
 {
-  move_base_action_ = new actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction>("/move_base", true);
+  // Read parameters
+  auto declare_if_missing = [&](const std::string& name, double def) {
+    if (!node_->has_parameter(name)) node_->declare_parameter(name, def);
+  };
+  auto declare_bool_if_missing = [&](const std::string& name, bool def) {
+    if (!node_->has_parameter(name)) node_->declare_parameter(name, def);
+  };
 
-  if (nh_.hasParam("/seed_r7_mover_controller/encoder_odom"))
-    nh_.getParam("/seed_r7_mover_controller/encoder_odom", encoder_odom_);
-  else
-    encoder_odom_ = false;
+  declare_bool_if_missing("seed_r7_mover_controller.encoder_odom", false);
+  declare_if_missing("seed_r7_mover_controller.wheel_radius", 0.075);
+  declare_if_missing("seed_r7_mover_controller.tread", 0.39);
+  declare_if_missing("seed_r7_mover_controller.wheelbase", 0.453);
+  declare_if_missing("seed_r7_mover_controller.ros_rate", 50.0);
+  declare_if_missing("seed_r7_mover_controller.odom_rate", 0.02);
+  declare_if_missing("seed_r7_mover_controller.safety_rate", 0.05);
+  declare_if_missing("seed_r7_mover_controller.safety_duration", 0.5);
 
-  //--- calcurate the coefficient(k1_,k2_) for wheel FK--
-  float wheel_radius,tread,wheelbase;
-  nh_.getParam("/seed_r7_mover_controller/wheel_radius", wheel_radius);
-  nh_.getParam("/seed_r7_mover_controller/tread", tread);
-  nh_.getParam("/seed_r7_mover_controller/wheelbase", wheelbase);
+  encoder_odom_ = node_->get_parameter("seed_r7_mover_controller.encoder_odom").as_bool();
 
-  k1_ =  - sqrt(2) * ( sqrt( pow(tread,2)+pow(wheelbase,2) )/2 ) * sin( M_PI/4 + atan2(tread/2,wheelbase/2) ) / wheel_radius;
-  k2_ = 1 / wheel_radius;
-  k3_ = wheel_radius/4;
-  k4_ = (tread/2) * sqrt(1 + pow(wheelbase/2,2) / pow(tread/2,2) ) * wheel_radius / 
-        (4*((tread/2)+(wheelbase/2))*( sqrt( pow(tread,2)+pow(wheelbase,2) )/2 ));
-  //---------
+  float wheel_radius = static_cast<float>(
+    node_->get_parameter("seed_r7_mover_controller.wheel_radius").as_double());
+  float tread = static_cast<float>(
+    node_->get_parameter("seed_r7_mover_controller.tread").as_double());
+  float wheelbase = static_cast<float>(
+    node_->get_parameter("seed_r7_mover_controller.wheelbase").as_double());
 
-  nh_.getParam("/seed_r7_mover_controller/ros_rate", ros_rate_);
-  nh_.getParam("/seed_r7_mover_controller/odom_rate", odom_rate_);
-  nh_.getParam("/seed_r7_mover_controller/safety_rate", safety_rate_);
-  nh_.getParam("/seed_r7_mover_controller/safety_duration", safety_duration_);
-  nh_.getParam("/joint_settings/wheel/aero_index", aero_index_);
+  // Compute kinematic coefficients
+  k1_ = -sqrt(2.0f) * (sqrt(pow(tread, 2) + pow(wheelbase, 2)) / 2.0f) *
+        sin(M_PI / 4.0f + atan2(tread / 2.0f, wheelbase / 2.0f)) / wheel_radius;
+  k2_ = 1.0f / wheel_radius;
+  k3_ = wheel_radius / 4.0f;
+  k4_ = (tread / 2.0f) * sqrt(1.0f + pow(wheelbase / 2.0f, 2) / pow(tread / 2.0f, 2)) *
+        wheel_radius /
+        (4.0f * ((tread / 2.0f) + (wheelbase / 2.0f)) *
+         (sqrt(pow(tread, 2) + pow(wheelbase, 2)) / 2.0f));
 
-  num_of_wheels_ = aero_index_.size();
- 
+  ros_rate_       = node_->get_parameter("seed_r7_mover_controller.ros_rate").as_double();
+  odom_rate_      = node_->get_parameter("seed_r7_mover_controller.odom_rate").as_double();
+  safety_rate_    = node_->get_parameter("seed_r7_mover_controller.safety_rate").as_double();
+  safety_duration_ = node_->get_parameter("seed_r7_mover_controller.safety_duration").as_double();
+
+  // Wheel aero_index
+  if (!node_->has_parameter("joint_settings.wheel.aero_index")) {
+    node_->declare_parameter("joint_settings.wheel.aero_index", std::vector<int64_t>{});
+  }
+  auto aero_index_64 = node_->get_parameter("joint_settings.wheel.aero_index").as_integer_array();
+  aero_index_.assign(aero_index_64.begin(), aero_index_64.end());
+  num_of_wheels_ = static_cast<int>(aero_index_.size());
+
   servo_on_ = false;
-  current_time_ = ros::Time::now();
+  current_time_ = node_->now();
   last_time_ = current_time_;
+  time_stamp_ = current_time_;
 
-/*
-  base_ops_ = ros::SubscribeOptions::create<geometry_msgs::Twist >( "cmd_vel", 2, boost::bind(&NoidMoverController::cmdVelCallback, this, _1),ros::VoidPtr(), &base_queue_);
-  cmd_vel_sub_ = nh_.subscribe(base_ops_);
-  ros::TimerOptions tmopt(ros::Duration(safety_rate_), boost::bind(&NoidMoverController::safetyCheckCallback,this, _1), &base_queue_);
-  safe_timer_ = _nh.createTimer(tmopt);
-  base_spinner_.start();
-*/
+  // TF broadcaster
+  odom_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
 
-  cmd_vel_sub_ = nh_.subscribe("cmd_vel",1, &MoverController::cmdVelCallback,this);
-  safe_timer_ = nh_.createTimer(ros::Duration(safety_rate_), &MoverController::safetyCheckCallback, this);
+  // Publishers
+  odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>("odom", 1);
+  initialpose_pub_ = node_->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    "/initialpose", 1);
 
-  // for odometory
-  odom_pub_ = nh_.advertise<nav_msgs::Odometry>("odom", 1);
-  odom_timer_ = nh_.createTimer(ros::Duration(odom_rate_), &MoverController::calculateOdometry, this);
+  // Subscribers
+  cmd_vel_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+    "cmd_vel", 1,
+    std::bind(&MoverController::cmdVelCallback, this, std::placeholders::_1));
 
-  initialpose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("/initialpose", 1);
-  led_control_server_
-    = nh_.advertiseService("led_control", &MoverController::ledControlCallback,this);
+  // Timers
+  auto safety_ms = std::chrono::milliseconds(
+    static_cast<int>(safety_rate_ * 1000));
+  safe_timer_ = node_->create_wall_timer(
+    safety_ms, std::bind(&MoverController::safetyCheckCallback, this));
 
-  set_initialpose_server_
-    = nh_.advertiseService("set_initialpose", &MoverController::setInitialPoseCallback,this);
-  reset_odom_server_
-    = nh_.advertiseService("reset_odom", &MoverController::resetOdomCallback, this);
+  auto odom_ms = std::chrono::milliseconds(
+    static_cast<int>(odom_rate_ * 1000));
+  odom_timer_ = node_->create_wall_timer(
+    odom_ms, std::bind(&MoverController::calculateOdometry, this));
 
+  // Services
+  led_control_server_ = node_->create_service<seed_r7_ros_controller::srv::LedControl>(
+    "led_control",
+    std::bind(&MoverController::ledControlCallback, this,
+              std::placeholders::_1, std::placeholders::_2));
+  set_initialpose_server_ = node_->create_service<seed_r7_ros_controller::srv::SetInitialPose>(
+    "set_initialpose",
+    std::bind(&MoverController::setInitialPoseCallback, this,
+              std::placeholders::_1, std::placeholders::_2));
+  reset_odom_server_ = node_->create_service<seed_r7_ros_controller::srv::ResetOdom>(
+    "reset_odom",
+    std::bind(&MoverController::resetOdomCallback, this,
+              std::placeholders::_1, std::placeholders::_2));
 }
 
-//////////////////////////////////////////////////
-/// @brief destructor
 robot_hardware::MoverController::~MoverController()
 {
 }
 
-//////////////////////////////////////////////////
-/// @brief control with cmd_vel
-void robot_hardware::MoverController::cmdVelCallback(const geometry_msgs::TwistConstPtr& _cmd_vel)
+void robot_hardware::MoverController::cmdVelCallback(
+  const geometry_msgs::msg::Twist::SharedPtr _cmd_vel)
 {
-  ros::Time now = ros::Time::now();
-  ROS_DEBUG("cmd_vel: %f %f %f", _cmd_vel->linear.x, _cmd_vel->linear.y, _cmd_vel->angular.z);
+  rclcpp::Time now = node_->now();
+  RCLCPP_DEBUG(node_->get_logger(), "cmd_vel: %f %f %f",
+               _cmd_vel->linear.x, _cmd_vel->linear.y, _cmd_vel->angular.z);
 
   if (base_mtx_.try_lock()) {
-    if(hw_->robot_status_.p_stopped_err_ ||
-      (hw_->robot_status_.connection_err_ && hw_->robot_status_.calib_err_) )
-    {
-      //move_base_action_->cancelAllGoals();  //if you want to cancel goal, use this
+    if (hw_->robot_status_.p_stopped_err_ ||
+        (hw_->robot_status_.connection_err_ && hw_->robot_status_.calib_err_)) {
       vx_ = vy_ = vth_ = 0.0;
-    }
-    else if (_cmd_vel->linear.x == 0.0 && _cmd_vel->linear.y == 0.0 && _cmd_vel->angular.z == 0.0) {
+    } else if (_cmd_vel->linear.x == 0.0 && _cmd_vel->linear.y == 0.0 &&
+               _cmd_vel->angular.z == 0.0) {
       vx_ = vy_ = vth_ = 0.0;
-    }
-    else{
-      vx_ = _cmd_vel->linear.x;
-      vy_ = _cmd_vel->linear.y;
+    } else {
+      vx_  = _cmd_vel->linear.x;
+      vy_  = _cmd_vel->linear.y;
       vth_ = _cmd_vel->angular.z;
     }
-/*
-    else {
-      double dt = (now - time_stamp_).toSec();
-      double acc_x = (_cmd_vel->linear.x  - vx_)  / dt;
-      double acc_y = (_cmd_vel->linear.y  - vy_)  / dt;
-      double acc_z = (_cmd_vel->angular.z - vth_) / dt;
 
-      ROS_DEBUG("vel_acc: %f %f %f", acc_x, acc_y, acc_z);
+    RCLCPP_DEBUG(node_->get_logger(), "act_vel: %f %f %f", vx_, vy_, vth_);
 
-      if (acc_x >   MAX_ACC_X) acc_x =   MAX_ACC_X;
-      if (acc_x < - MAX_ACC_X) acc_x = - MAX_ACC_X;
-      if (acc_y >   MAX_ACC_Y) acc_y =   MAX_ACC_Y;
-      if (acc_y < - MAX_ACC_Y) acc_y = - MAX_ACC_Y;
-      if (acc_z >   MAX_ACC_Z) acc_z =   MAX_ACC_Z;
-      if (acc_z < - MAX_ACC_Z) acc_z = - MAX_ACC_Z;
-
-      vx_  += acc_x * dt;
-      vy_  += acc_y * dt;
-      vth_ += acc_z * dt;
-    }
-*/
-    ROS_DEBUG("act_vel: %f %f %f", vx_, vy_, vth_);
-
-    //check servo state
-    if ( !servo_on_ ) {
+    if (!servo_on_) {
       servo_on_ = true;
       hw_->onWheelServo(servo_on_);
     }
 
     std::vector<int16_t> wheel_vel(num_of_wheels_);
-
-    // convert velocity to wheel
-    // need to declarion check
     velocityToWheel(vx_, vy_, vth_, wheel_vel);
-
     hw_->turnWheel(wheel_vel);
 
-    //update time_stamp_
     time_stamp_ = now;
-
     base_mtx_.unlock();
   } else {
-    ROS_WARN("cmd_vel comes before sending pervious message");
+    RCLCPP_WARN(node_->get_logger(), "cmd_vel comes before sending previous message");
   }
 }
 
-//////////////////////////////////////////////////
-/// @brief safety stopper when msg is not reached
-///  for more than `safety_duration_` [s]
-void robot_hardware::MoverController::safetyCheckCallback(const ros::TimerEvent& _event)
+void robot_hardware::MoverController::safetyCheckCallback()
 {
-  if((ros::Time::now() - time_stamp_).toSec() >= safety_duration_ && servo_on_) {
-    std::vector<int16_t> wheel_velocity(num_of_wheels_);
-    
+  rclcpp::Time now = node_->now();
+  if ((now - time_stamp_).seconds() >= safety_duration_ && servo_on_) {
+    std::vector<int16_t> wheel_velocity(num_of_wheels_, 0);
     vx_ = vy_ = vth_ = 0.0;
-    ROS_WARN("Base: safety stop");
-    for (size_t i = 0; i < num_of_wheels_; i++) {
-      wheel_velocity[i] = 0;
-    }
+    RCLCPP_WARN(node_->get_logger(), "Base: safety stop");
     hw_->turnWheel(wheel_velocity);
-
     servo_on_ = false;
     hw_->onWheelServo(servo_on_);
   }
@@ -160,223 +161,181 @@ void robot_hardware::MoverController::safetyCheckCallback(const ros::TimerEvent&
 
 void robot_hardware::MoverController::calculateEncoderOdometry()
 {
-
-  double dt, delta_x, delta_y, delta_th;
-  double en_vx,en_vy,en_vth;
-  double v1,v2,v3,v4;
-  double theta = 0;
+  double dt = (current_time_ - last_time_).seconds();
+  double en_vx, en_vy, en_vth;
+  double theta = 0.0;
   double cos_th = cos(theta);
   double sin_th = sin(theta);
 
-  dt = (current_time_ - last_time_).toSec();
-
-  if(std::isfinite(hw_->wheel_velocities_.at(0)) && std::isfinite(hw_->wheel_velocities_.at(1)) &&
-      std::isfinite(hw_->wheel_velocities_.at(2)) && std::isfinite(hw_->wheel_velocities_.at(3)))
-  {
+  double v1, v2, v3, v4;
+  if (std::isfinite(hw_->wheel_velocities_.at(0)) && std::isfinite(hw_->wheel_velocities_.at(1)) &&
+      std::isfinite(hw_->wheel_velocities_.at(2)) && std::isfinite(hw_->wheel_velocities_.at(3))) {
     v1 = hw_->wheel_velocities_.at(0);  // front right
     v2 = hw_->wheel_velocities_.at(2);  // front left
     v3 = hw_->wheel_velocities_.at(3);  // rear left
     v4 = hw_->wheel_velocities_.at(1);  // rear right
-  }
-  else
-  {
-    v1=v2=v3=v4=0;
+  } else {
+    v1 = v2 = v3 = v4 = 0.0;
   }
 
-  // in mover coordinate, x is right direction and y is front direction
-  en_vx = k3_ * ( (-cos_th - sin_th)*v1 + (cos_th-sin_th)*v2 + (cos_th+sin_th)*v3 + (-cos_th+sin_th)*v4);
-  en_vy = k3_ * ( (-cos_th + sin_th)*v1 + (-cos_th-sin_th)*v2 + (cos_th-sin_th)*v3 + (cos_th+sin_th)*v4);
-  en_vth = -k4_*(v1+v2+v3+v4);
+  en_vx  = k3_ * ((-cos_th - sin_th) * v1 + ( cos_th - sin_th) * v2 +
+                   ( cos_th + sin_th) * v3 + (-cos_th + sin_th) * v4);
+  en_vy  = k3_ * ((-cos_th + sin_th) * v1 + (-cos_th - sin_th) * v2 +
+                   ( cos_th - sin_th) * v3 + ( cos_th + sin_th) * v4);
+  en_vth = -k4_ * (v1 + v2 + v3 + v4);
 
-  delta_x  = (en_vx * cos(en_th_) - en_vy * sin(en_th_)) * dt;
-  delta_y  = (en_vx * sin(en_th_) + en_vy * cos(en_th_)) * dt;
-  delta_th = en_vth * dt;
+  double delta_x  = (en_vx * cos(en_th_) - en_vy * sin(en_th_)) * dt;
+  double delta_y  = (en_vx * sin(en_th_) + en_vy * cos(en_th_)) * dt;
+  double delta_th = en_vth * dt;
 
   en_x_  += delta_x;
   en_y_  += delta_y;
   en_th_ += delta_th;
 
-  // odometry is 6DOF so we'll need a quaternion created from yaw
-  geometry_msgs::Quaternion odom_quat
-      = tf::createQuaternionMsgFromYaw(en_th_);
+  // Build quaternion from yaw
+  tf2::Quaternion q;
+  q.setRPY(0, 0, en_th_);
+  geometry_msgs::msg::Quaternion odom_quat = tf2::toMsg(q);
 
-  // first, we'll publish the transform over tf
-  geometry_msgs::TransformStamped odom_trans;
-  odom_trans.header.stamp = current_time_;
+  // TF: odom → base_link
+  geometry_msgs::msg::TransformStamped odom_trans;
+  odom_trans.header.stamp    = current_time_;
   odom_trans.header.frame_id = "odom";
   odom_trans.child_frame_id  = "base_link";
-
   odom_trans.transform.translation.x = en_x_;
   odom_trans.transform.translation.y = en_y_;
   odom_trans.transform.translation.z = 0.0;
-  odom_trans.transform.rotation = odom_quat;
+  odom_trans.transform.rotation      = odom_quat;
+  odom_broadcaster_->sendTransform(odom_trans);
 
-  // send the transform
-  odom_broadcaster_.sendTransform(odom_trans);
-
-  // next, we'll publish the odometry message over ROS
-  nav_msgs::Odometry odom;
-  odom.header.stamp = current_time_;
+  // Odometry message
+  nav_msgs::msg::Odometry odom;
+  odom.header.stamp    = current_time_;
   odom.header.frame_id = "odom";
-
-  // set the position
-  odom.pose.pose.position.x = en_x_;
-  odom.pose.pose.position.y = en_y_;
-  odom.pose.pose.position.z = 0.0;
-  odom.pose.pose.orientation = odom_quat;
-
-  // set the velocity
-  odom.child_frame_id = "base_link";
-  odom.twist.twist.linear.x  = en_vx;
-  odom.twist.twist.linear.y  = en_vy;
-  odom.twist.twist.angular.z = en_vth;
-
-  // publish the message
-  odom_pub_.publish(odom);
+  odom.child_frame_id  = "base_link";
+  odom.pose.pose.position.x    = en_x_;
+  odom.pose.pose.position.y    = en_y_;
+  odom.pose.pose.position.z    = 0.0;
+  odom.pose.pose.orientation   = odom_quat;
+  odom.twist.twist.linear.x    = en_vx;
+  odom.twist.twist.linear.y    = en_vy;
+  odom.twist.twist.angular.z   = en_vth;
+  odom_pub_->publish(odom);
 }
 
 void robot_hardware::MoverController::calculateCmdVelOdometry()
 {
-  double dt, delta_x, delta_y, delta_th;
-  dt = (current_time_ - last_time_).toSec();
+  double dt = (current_time_ - last_time_).seconds();
 
-  delta_x  = (vx_ * cos(th_) - vy_ * sin(th_)) * dt;
-  delta_y  = (vx_ * sin(th_) + vy_ * cos(th_)) * dt;
-  delta_th = vth_ * dt;
+  double delta_x  = (vx_ * cos(th_) - vy_ * sin(th_)) * dt;
+  double delta_y  = (vx_ * sin(th_) + vy_ * cos(th_)) * dt;
+  double delta_th = vth_ * dt;
 
   x_  += delta_x;
   y_  += delta_y;
   th_ += delta_th;
 
-  // odometry is 6DOF so we'll need a quaternion created from yaw
-  geometry_msgs::Quaternion odom_quat
-      = tf::createQuaternionMsgFromYaw(th_);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, th_);
+  geometry_msgs::msg::Quaternion odom_quat = tf2::toMsg(q);
 
-  // first, we'll publish the transform over tf
-  geometry_msgs::TransformStamped odom_trans;
-  odom_trans.header.stamp = current_time_;
+  geometry_msgs::msg::TransformStamped odom_trans;
+  odom_trans.header.stamp    = current_time_;
   odom_trans.header.frame_id = "odom";
   odom_trans.child_frame_id  = "base_link";
-
   odom_trans.transform.translation.x = x_;
   odom_trans.transform.translation.y = y_;
   odom_trans.transform.translation.z = 0.0;
-  odom_trans.transform.rotation = odom_quat;
+  odom_trans.transform.rotation      = odom_quat;
+  odom_broadcaster_->sendTransform(odom_trans);
 
-  // send the transform
-  odom_broadcaster_.sendTransform(odom_trans);
-
-  // next, we'll publish the odometry message over ROS
-  nav_msgs::Odometry odom;
-  odom.header.stamp = current_time_;
+  nav_msgs::msg::Odometry odom;
+  odom.header.stamp    = current_time_;
   odom.header.frame_id = "odom";
-
-  // set the position
-  odom.pose.pose.position.x = x_;
-  odom.pose.pose.position.y = y_;
-  odom.pose.pose.position.z = 0.0;
+  odom.child_frame_id  = "base_link";
+  odom.pose.pose.position.x  = x_;
+  odom.pose.pose.position.y  = y_;
+  odom.pose.pose.position.z  = 0.0;
   odom.pose.pose.orientation = odom_quat;
-
-  // set the velocity
-  odom.child_frame_id = "base_link";
   odom.twist.twist.linear.x  = vx_;
   odom.twist.twist.linear.y  = vy_;
   odom.twist.twist.angular.z = vth_;
-
-  // publish the message
-  odom_pub_.publish(odom);
+  odom_pub_->publish(odom);
 }
 
-//////////////////////////////////////////////////
-/// @brief odometry publisher
-void robot_hardware::MoverController::calculateOdometry(const ros::TimerEvent& _event)
+void robot_hardware::MoverController::calculateOdometry()
 {
-  current_time_ = ros::Time::now();
+  current_time_ = node_->now();
 
-  if(hw_->lower_connected_)
-    if(encoder_odom_) calculateEncoderOdometry();
-    else calculateCmdVelOdometry();    
-  else
+  if (hw_->lower_connected_) {
+    if (encoder_odom_) calculateEncoderOdometry();
+    else calculateCmdVelOdometry();
+  } else {
     calculateCmdVelOdometry();
+  }
 
   last_time_ = current_time_;
 }
 
-void robot_hardware::MoverController::velocityToWheel
-(double _linear_x, double _linear_y, double _angular_z, std::vector<int16_t>& _wheel_vel) 
+void robot_hardware::MoverController::velocityToWheel(
+  double _linear_x, double _linear_y, double _angular_z,
+  std::vector<int16_t>& _wheel_vel)
 {
-    float dx, dy, dtheta, theta;
-    float v1, v2, v3, v4;
-    int16_t front_right_wheel, rear_right_wheel, front_left_wheel, rear_left_wheel;
-    theta = 0.0;  // this means angle in local coords, so always 0
+  float theta = 0.0f;
+  float cos_theta = cos(theta);
+  float sin_theta = sin(theta);
 
-    float cos_theta = cos(theta);
-    float sin_theta = sin(theta);
+  float dy     = static_cast<float>(_linear_x * cos_theta - _linear_y * sin_theta);
+  float dx     = static_cast<float>(_linear_x * sin_theta + _linear_y * cos_theta);
+  float dtheta = static_cast<float>(_angular_z);
 
-    // change dy and dx, because of between ROS and vehicle direction
-    dy = (_linear_x * cos_theta - _linear_y * sin_theta);
-    dx = (_linear_x * sin_theta + _linear_y * cos_theta);
-    dtheta = _angular_z;  // desirede angular velocity
+  float v1 = k1_ * dtheta + k2_ * ((-cos_theta + sin_theta) * dx + (-cos_theta - sin_theta) * dy);
+  float v2 = k1_ * dtheta + k2_ * ((-cos_theta - sin_theta) * dx + ( cos_theta - sin_theta) * dy);
+  float v3 = k1_ * dtheta + k2_ * (( cos_theta - sin_theta) * dx + ( cos_theta + sin_theta) * dy);
+  float v4 = k1_ * dtheta + k2_ * (( cos_theta + sin_theta) * dx + (-cos_theta + sin_theta) * dy);
 
-    // calculate wheel velocity
-    v1 = k1_ * dtheta + k2_ * ((-cos_theta + sin_theta) * dx + (-cos_theta - sin_theta) * dy);
-    v2 = k1_ * dtheta + k2_ * ((-cos_theta - sin_theta) * dx + ( cos_theta - sin_theta) * dy);
-    v3 = k1_ * dtheta + k2_ * (( cos_theta - sin_theta) * dx + ( cos_theta + sin_theta) * dy);
-    v4 = k1_ * dtheta + k2_ * (( cos_theta + sin_theta) * dx + (-cos_theta + sin_theta) * dy);
-
-    //[rad/sec] -> [deg/sec]
-    front_right_wheel = static_cast<int16_t>(v1 * (180 / M_PI));
-    rear_right_wheel = static_cast<int16_t>(v4 * (180 / M_PI));
-    front_left_wheel = static_cast<int16_t>(v2 * (180 / M_PI));
-    rear_left_wheel = static_cast<int16_t>(v3 * (180 / M_PI));
-
-    _wheel_vel[0] = front_left_wheel;
-    _wheel_vel[1] = front_right_wheel;
-    _wheel_vel[2] = rear_left_wheel;
-    _wheel_vel[3] = rear_right_wheel;
+  _wheel_vel[0] = static_cast<int16_t>(v2 * (180.0f / M_PI));  // front left
+  _wheel_vel[1] = static_cast<int16_t>(v1 * (180.0f / M_PI));  // front right
+  _wheel_vel[2] = static_cast<int16_t>(v3 * (180.0f / M_PI));  // rear left
+  _wheel_vel[3] = static_cast<int16_t>(v4 * (180.0f / M_PI));  // rear right
 }
 
-//////////////////////////////////////////////////
-bool robot_hardware::MoverController::setInitialPoseCallback
-(seed_r7_ros_controller::SetInitialPose::Request& _req,
-seed_r7_ros_controller::SetInitialPose::Response& _res)
+void robot_hardware::MoverController::setInitialPoseCallback(
+  const seed_r7_ros_controller::srv::SetInitialPose::Request::SharedPtr _req,
+  seed_r7_ros_controller::srv::SetInitialPose::Response::SharedPtr _res)
 {
-  geometry_msgs::PoseWithCovarianceStamped initial_pose;
-  geometry_msgs::Quaternion pose_quat = tf::createQuaternionMsgFromYaw(_req.theta);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, _req->theta);
+  geometry_msgs::msg::Quaternion pose_quat = tf2::toMsg(q);
 
-  initial_pose.header.stamp = ros::Time::now();
+  geometry_msgs::msg::PoseWithCovarianceStamped initial_pose;
+  initial_pose.header.stamp    = node_->now();
   initial_pose.header.frame_id = "map";
-  initial_pose.pose.pose.position.x = _req.x;
-  initial_pose.pose.pose.position.y = _req.y;
-  initial_pose.pose.pose.position.z = 0.0;
+  initial_pose.pose.pose.position.x  = _req->x;
+  initial_pose.pose.pose.position.y  = _req->y;
+  initial_pose.pose.pose.position.z  = 0.0;
   initial_pose.pose.pose.orientation = pose_quat;
-
   initial_pose.pose.covariance[6 * 0 + 0] = 0.5 * 0.5;
   initial_pose.pose.covariance[6 * 1 + 1] = 0.5 * 0.5;
   initial_pose.pose.covariance[6 * 5 + 5] = M_PI / 12.0 * M_PI / 12.0;
 
-  initialpose_pub_.publish(initial_pose);
-
-  return "SetInitialPose succeeded";
+  initialpose_pub_->publish(initial_pose);
+  _res->result = "SetInitialPose succeeded";
 }
 
-bool robot_hardware::MoverController::ledControlCallback
-  (seed_r7_ros_controller::LedControl::Request&  _req,
-  seed_r7_ros_controller::LedControl::Response& _res)
+void robot_hardware::MoverController::ledControlCallback(
+  const seed_r7_ros_controller::srv::LedControl::Request::SharedPtr _req,
+  seed_r7_ros_controller::srv::LedControl::Response::SharedPtr _res)
 {
-  hw_->runLedScript(_req.send_number, _req.script_number);
-
-  _res.result = "LED succeeded";
-
-  return true;
+  hw_->runLedScript(_req->send_number, _req->script_number);
+  _res->result = "LED succeeded";
 }
 
-bool robot_hardware::MoverController::resetOdomCallback(seed_r7_ros_controller::ResetOdom::Request &_req,
-                                                        seed_r7_ros_controller::ResetOdom::Response &_res)
+void robot_hardware::MoverController::resetOdomCallback(
+  const seed_r7_ros_controller::srv::ResetOdom::Request::SharedPtr /*_req*/,
+  seed_r7_ros_controller::srv::ResetOdom::Response::SharedPtr _res)
 {
-  x_ = y_ = th_ = 0;
-  en_x_ = en_y_ = en_th_ = 0;
-  _res.result = "ResetOdom succeeded";
-
-  return true;
+  x_ = y_ = th_ = 0.0;
+  en_x_ = en_y_ = en_th_ = 0.0;
+  _res->result = "ResetOdom succeeded";
 }

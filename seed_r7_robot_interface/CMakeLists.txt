@@ -1,68 +1,62 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(seed_r7_robot_interface)
 
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(urdf REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(angles REQUIRED)
+find_package(seed_r7_ros_controller REQUIRED)
 
-# Dependencies
+# ---- typef ----
+add_library(${PROJECT_NAME}_typef SHARED typef/src/stroke_converter.cpp)
+target_include_directories(${PROJECT_NAME}_typef PRIVATE typef/src)
+ament_target_dependencies(${PROJECT_NAME}_typef rclcpp pluginlib seed_r7_ros_controller)
 
-# catkin ROS
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  seed_r7_ros_controller
-)
-if(NOT catkin_LIBRARIES)
-  message(FATAL "catkin required but not supported")
-endif()
+# ---- typeg ----
+add_library(${PROJECT_NAME}_typeg SHARED typeg/src/stroke_converter.cpp)
+target_include_directories(${PROJECT_NAME}_typeg PRIVATE typeg/src)
+ament_target_dependencies(${PROJECT_NAME}_typeg rclcpp pluginlib seed_r7_ros_controller)
 
-# ROS setups
+# ---- typeg_arm ----
+add_library(${PROJECT_NAME}_typeg_arm SHARED typeg_arm/src/stroke_converter.cpp)
+target_include_directories(${PROJECT_NAME}_typeg_arm PRIVATE typeg_arm/src)
+ament_target_dependencies(${PROJECT_NAME}_typeg_arm rclcpp pluginlib seed_r7_ros_controller)
 
-catkin_package(
-  CATKIN_DEPENDS roscpp seed_r7_ros_controller
-  DEPENDS
-  INCLUDE_DIRS
-  LIBRARIES ${PROJECT_NAME}_typef ${PROJECT_NAME}_typeg ${PROJECT_NAME}_typeg_arm ${PROJECT_NAME}_typeg2_arm
-)
+# ---- typeg2_arm ----
+add_library(${PROJECT_NAME}_typeg2_arm SHARED typeg2_arm/src/stroke_converter.cpp)
+target_include_directories(${PROJECT_NAME}_typeg2_arm PRIVATE typeg2_arm/src)
+ament_target_dependencies(${PROJECT_NAME}_typeg2_arm rclcpp pluginlib seed_r7_ros_controller)
 
-include_directories(${catkin_INCLUDE_DIRS})
+# Register stroke converter plugins against seed_r7_ros_controller
+pluginlib_export_plugin_description_file(seed_r7_ros_controller typef/plugin_description.xml)
+pluginlib_export_plugin_description_file(seed_r7_ros_controller typeg/plugin_description.xml)
+pluginlib_export_plugin_description_file(seed_r7_ros_controller typeg_arm/plugin_description.xml)
+pluginlib_export_plugin_description_file(seed_r7_ros_controller typeg2_arm/plugin_description.xml)
 
-add_definitions(-std=c++11)  # should be c++14 for melodic
-
-add_library(${PROJECT_NAME}_typef typef/src/stroke_converter.cpp)
-target_link_libraries(${PROJECT_NAME}_typef ${catkin_LIBRARIES})
-
-add_library(${PROJECT_NAME}_typeg typeg/src/stroke_converter.cpp)
-target_link_libraries(${PROJECT_NAME}_typeg ${catkin_LIBRARIES})
-
-add_library(${PROJECT_NAME}_typeg_arm typeg_arm/src/stroke_converter.cpp)
-target_link_libraries(${PROJECT_NAME}_typeg_arm ${catkin_LIBRARIES})
-
-add_library(${PROJECT_NAME}_typeg2_arm typeg2_arm/src/stroke_converter.cpp)
-target_link_libraries(${PROJECT_NAME}_typeg2_arm ${catkin_LIBRARIES})
-
-# Install
 install(
-  DIRECTORY typef
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  PATTERN "typef/src" EXCLUDE
-)
-install(
-  DIRECTORY typeg
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  PATTERN "typeg/src" EXCLUDE
-)
-install(
-  DIRECTORY typeg_arm
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  PATTERN "typeg_arm/src" EXCLUDE
-)
-install(
-  DIRECTORY typeg2_arm
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  PATTERN "typeg2_arm/src" EXCLUDE
+  TARGETS
+    ${PROJECT_NAME}_typef
+    ${PROJECT_NAME}_typeg
+    ${PROJECT_NAME}_typeg_arm
+    ${PROJECT_NAME}_typeg2_arm
+  DESTINATION lib
 )
 
-# Install
-install(TARGETS ${PROJECT_NAME}_typef ${PROJECT_NAME}_typeg
-  ${PROJECT_NAME}_typeg_arm ${PROJECT_NAME}_typeg2_arm
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+# Install config directories (exclude source files)
+install(
+  DIRECTORY typef typeg typeg_arm typeg2_arm
+  DESTINATION share/${PROJECT_NAME}
+  PATTERN "*/src" EXCLUDE
 )
+
+ament_package()

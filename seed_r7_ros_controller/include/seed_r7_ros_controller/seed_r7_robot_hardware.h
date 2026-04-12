@@ -1,118 +1,96 @@
-/*********************************************************************
- * Software License Agreement (BSD License)
- *
- *  Copyright (c) 2018, Yohei Kakiuchi (JSK lab.)
- *  All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions
- *  are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *   * Neither the name of the Open Source Robotics Foundation
- *     nor the names of its contributors may be
- *     used to endorse or promote products derived
- *     from this software without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
- *********************************************************************/
-
 #ifndef _ROBOT_HW_H_
 #define _ROBOT_HW_H_
 
-// ros_control
-#include <control_toolbox/pid.h>
-#include <hardware_interface/joint_command_interface.h>
-#include <hardware_interface/robot_hw.h>
-#include <joint_limits_interface/joint_limits.h>
-#include <joint_limits_interface/joint_limits_interface.h>
-#include <joint_limits_interface/joint_limits_rosparam.h>
-#include <joint_limits_interface/joint_limits_urdf.h>
+// ROS2 / ros2_control
+#include <hardware_interface/system_interface.hpp>
+#include <hardware_interface/handle.hpp>
+#include <hardware_interface/hardware_info.hpp>
+#include <hardware_interface/types/hardware_interface_type_values.hpp>
+#include <hardware_interface/types/hardware_component_interface_params.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/state.hpp>
 
-// ROS
-#include <ros/ros.h>
-#include <std_msgs/Float32.h>
-#include <pluginlib/class_loader.h>
+// Messages
+#include <std_msgs/msg/float32.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
+// pluginlib
+#include <pluginlib/class_loader.hpp>
 
 // URDF
 #include <urdf/model.h>
 
-// AERO
+// Diagnostics
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
+// AERO controllers
 #include "seed_r7_ros_controller/seed_r7_upper_controller.h"
 #include "seed_r7_ros_controller/seed_r7_lower_controller.h"
 #include "seed_r7_ros_controller/stroke_converter_base.h"
-#include "seed_r7_ros_controller/ResetRobotStatus.h"
+
+// Generated service types
+#include "seed_r7_ros_controller/srv/reset_robot_status.hpp"
+#include "seed_r7_ros_controller/msg/robot_info.hpp"
 
 #include <mutex>
-
-//for robot status view
-#include <std_msgs/String.h>
-#include <diagnostic_updater/diagnostic_updater.h>
-
-#include "seed_r7_ros_controller/RobotInfo.h"
-#include <geometry_msgs/Twist.h>
-#include <nav_msgs/Odometry.h>
-#include <tf/transform_listener.h>
+#include <thread>
 
 namespace robot_hardware
 {
 
-class RobotHW : public hardware_interface::RobotHW
+// Forward declarations
+class MoverController;
+class HandController;
+
+class RobotHW : public hardware_interface::SystemInterface
 {
 public:
-  RobotHW() : converter_loader_("seed_r7_ros_controller", "StrokeConverter") { }
+  RobotHW();
+  virtual ~RobotHW();
 
-  virtual ~RobotHW() {}
+  // hardware_interface::SystemInterface overrides
+  hardware_interface::CallbackReturn on_init(
+    const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
-  virtual bool init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_hw_nh);
-  virtual void read(const ros::Time& time, const ros::Duration& period);
-  virtual void write(const ros::Time& time, const ros::Duration& period);
+  std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+  std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
 
-  void readPos(const ros::Time& time, const ros::Duration& period, bool update);
-  void writeWheel(const std::vector< std::string> &_names,
-                  const std::vector<int16_t> &_vel, double _tm_sec);
-  double getPeriod() { return ((double)CONTROL_PERIOD_US_) / (1000 * 1000); }
-  void cmdVelCallback(const geometry_msgs::TwistConstPtr &_cmd_vel);
-  void odomCallback(const nav_msgs::OdometryConstPtr &_odom);
+  hardware_interface::CallbackReturn on_activate(
+    const rclcpp_lifecycle::State & previous_state) override;
+  hardware_interface::CallbackReturn on_deactivate(
+    const rclcpp_lifecycle::State & previous_state) override;
 
-  //--specific functions--
+  hardware_interface::return_type read(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
+  hardware_interface::return_type write(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
+
+  // Public hardware access methods (used by MoverController/HandController)
+  void readPos(const rclcpp::Time & time, const rclcpp::Duration & period, bool update);
   void runHandScript(uint8_t _number, uint16_t _script, uint8_t _current);
-  void turnWheel(std::vector<int16_t> &_vel);
+  void turnWheel(std::vector<int16_t> & _vel);
   void onWheelServo(bool _value);
-  void getBatteryVoltage(const ros::TimerEvent& _event);
-  void pubRobotInfo(const ros::TimerEvent &_event);
   void runLedScript(uint8_t _number, uint16_t _script);
-  void setRobotStatus();
-  void setDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
-  //----------------------
 
+  // Callbacks from cmd_vel / odom subscriptions
+  void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr _cmd_vel);
+  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr _odom);
+
+  double getPeriod() { return ((double)CONTROL_PERIOD_US_) / (1000 * 1000); }
+
+  // Public state
   bool comm_err_;
   struct RobotStatus {
-      bool connection_err_;
-      bool calib_err_;
-      bool motor_err_;
-      bool temp_err_;
-      bool res_err_;
-      bool step_out_err_;
-      bool p_stopped_err_;
-      bool power_err_;
-    } robot_status_;
+    bool connection_err_;
+    bool calib_err_;
+    bool motor_err_;
+    bool temp_err_;
+    bool res_err_;
+    bool step_out_err_;
+    bool p_stopped_err_;
+    bool power_err_;
+  } robot_status_;
 
   std::vector<double> wheel_angles_;
   std::vector<double> wheel_velocities_;
@@ -121,46 +99,39 @@ public:
   bool pub_robot_info_;
 
 private:
-  ros::ServiceServer reset_robot_status_server_;
-  bool resetRobotStatusCallback(seed_r7_ros_controller::ResetRobotStatus::Request& _req, seed_r7_ros_controller::ResetRobotStatus::Response& _res);
+  void getBatteryVoltage();
+  void pubRobotInfo();
+  void setRobotStatus();
+  void setDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void resetRobotStatusCallback(
+    const seed_r7_ros_controller::srv::ResetRobotStatus::Request::SharedPtr _req,
+    seed_r7_ros_controller::srv::ResetRobotStatus::Response::SharedPtr _res);
 
 protected:
-  // Methods used to control a joint.
-  enum ControlMethod {EFFORT, POSITION, POSITION_PID, VELOCITY, VELOCITY_PID};
-  enum JointType {NONE, PRISMATIC, ROTATIONAL, CONTINUOUS, FIXED};
+  enum ControlMethod { EFFORT, POSITION, POSITION_PID, VELOCITY, VELOCITY_PID };
+  enum JointType { NONE, PRISMATIC, ROTATIONAL, CONTINUOUS, FIXED };
 
   unsigned int number_of_angles_;
-
-  hardware_interface::JointStateInterface    js_interface_;
-  hardware_interface::PositionJointInterface pj_interface_;
-
-  joint_limits_interface::PositionJointSaturationInterface pj_sat_interface_;
-
   std::vector<std::string> joint_list_;
-  std::vector<double> joint_effort_limits_;
-  std::vector<JointType>     joint_types_;
+  std::vector<JointType> joint_types_;
   std::vector<ControlMethod> joint_control_methods_;
   std::vector<double> joint_position_;
   std::vector<double> joint_velocity_;
   std::vector<double> joint_effort_;
   std::vector<double> joint_position_command_;
-  std::vector<double> joint_velocity_command_;
-  std::vector<double> joint_effort_command_;
-
 
   std::vector<double> prev_ref_strokes_;
   std::vector<int16_t> upper_act_strokes_;
   std::vector<int16_t> lower_act_strokes_;
 
-  boost::shared_ptr<robot_hardware::UpperController> controller_upper_;
-  boost::shared_ptr<robot_hardware::LowerController> controller_lower_;
+  std::shared_ptr<robot_hardware::UpperController> controller_upper_;
+  std::shared_ptr<robot_hardware::LowerController> controller_lower_;
 
   bool initialized_flag_;
   bool upper_send_enable_;
 
-  int   CONTROL_PERIOD_US_;
+  int CONTROL_PERIOD_US_;
   float OVERLAP_SCALE_;
-  int   BASE_COMMAND_PERIOD_MS_;
 
   std::mutex mutex_lower_;
   std::mutex mutex_upper_;
@@ -169,23 +140,42 @@ protected:
   std::vector<std::string> joint_names_lower_;
   std::string robot_model_plugin_;
 
-  ros::Timer bat_vol_timer_;
-  ros::Publisher bat_vol_pub_;
-
+  // pluginlib for stroke converter
   pluginlib::ClassLoader<seed_converter::StrokeConverter> converter_loader_;
-  boost::shared_ptr<seed_converter::StrokeConverter> stroke_converter_;
+  std::shared_ptr<seed_converter::StrokeConverter> stroke_converter_;
 
-  //for robot status view
-  diagnostic_updater::Updater diagnostic_updater_;
+  // Internal rclcpp node for pub/sub/services within the hardware plugin
+  rclcpp::Node::SharedPtr hw_node_;
+  rclcpp::executors::SingleThreadedExecutor executor_;
+  std::thread executor_thread_;
+  bool executor_running_;
 
-  ros::Timer robot_info_timer_;
-  ros::Publisher robot_info_pub_;
-  seed_r7_ros_controller::RobotInfo robot_info_;
-  ros::Subscriber cmd_vel_sub_, odom_sub_;
+  // Battery voltage publisher
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr bat_vol_pub_;
+  rclcpp::TimerBase::SharedPtr bat_vol_timer_;
+
+  // Robot info publisher
+  rclcpp::Publisher<seed_r7_ros_controller::msg::RobotInfo>::SharedPtr robot_info_pub_;
+  rclcpp::TimerBase::SharedPtr robot_info_timer_;
+  seed_r7_ros_controller::msg::RobotInfo robot_info_;
+
+  // cmd_vel / odom subscriptions
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+
+  // reset_robot_status service
+  rclcpp::Service<seed_r7_ros_controller::srv::ResetRobotStatus>::SharedPtr reset_robot_status_server_;
+
+  // Diagnostics
+  std::shared_ptr<diagnostic_updater::Updater> diagnostic_updater_;
   int8_t pre_diag_level_;
   std::string pre_diag_msg_;
+
+  // MoverController and HandController (owned by plugin, use hw_node_)
+  std::shared_ptr<MoverController> mover_controller_;
+  std::shared_ptr<HandController> hand_controller_;
 };
 
-}
+}  // namespace robot_hardware
 
-#endif
+#endif  // _ROBOT_HW_H_

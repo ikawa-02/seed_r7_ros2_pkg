@@ -1,0 +1,67 @@
+# hw_settings.yaml (typef) — ROS2 parameter format for seed_r7_hardware_interface node
+# This file is loaded via --params-file when the hardware plugin creates hw_node_.
+# Combines joint_settings and mover_controller parameters.
+
+seed_r7_hardware_interface:
+  ros__parameters:
+    joint_settings:
+      robot: typef
+      raw_data_size: 31
+      body_data_size: 30
+      base_data_size: 30
+
+      upper:
+        joints:
+          - waist_y_joint
+          - waist_p_joint
+          - waist_r_joint
+          - l_shoulder_p_joint
+          - l_shoulder_r_joint
+          - l_shoulder_y_joint
+          - l_elbow_joint
+          - l_wrist_y_joint
+          - l_wrist_p_joint
+          - l_wrist_r_joint
+          - l_thumb_joint
+          - neck_y_joint
+          - neck_p_joint
+          - neck_r_joint
+          - r_shoulder_p_joint
+          - r_shoulder_r_joint
+          - r_shoulder_y_joint
+          - r_elbow_joint
+          - r_wrist_y_joint
+          - r_wrist_p_joint
+          - r_wrist_r_joint
+          - r_thumb_joint
+        aero_index: [15, 25, 10, 18, 19, 20, 21, 22, 23, 24, 26, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
+
+      hand:
+        right_number: 12
+        left_number: 27
+
+      lower:
+        joints:
+          - knee_joint
+          - ankle_joint
+        aero_index: [1, 0]
+
+      wheel:
+        joints:
+          - wheels_body_to_front_left_mecanum_connector
+          - wheels_body_to_front_right_mecanum_connector
+          - wheels_body_to_rear_left_mecanum_connector
+          - wheels_body_to_rear_right_mecanum_connector
+        aero_index: [4, 2, 5, 3]
+
+    seed_r7_mover_controller:
+      ros_rate: 0.05
+      odom_rate: 0.02
+      safety_rate: 0.5
+      safety_duration: 1.0
+      wheel_radius: 0.0762
+      tread: 0.39
+      wheelbase: 0.453
+      encoder_odom: false
+      wheel_vel_limit: 9.0
+      pub_robot_info: false

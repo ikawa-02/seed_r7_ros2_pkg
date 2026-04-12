@@ -1,3 +1,16 @@
+# MoveIt2 Jazzy required fields
+planning_plugins:
+  - ompl_interface/OMPLPlanner
+request_adapters:
+  - default_planning_request_adapters/ResolveConstraintFrames
+  - default_planning_request_adapters/ValidateWorkspaceBounds
+  - default_planning_request_adapters/CheckStartStateBounds
+  - default_planning_request_adapters/CheckStartStateCollision
+response_adapters:
+  - default_planning_response_adapters/AddTimeOptimalParameterization
+  - default_planning_response_adapters/ValidateSolution
+  - default_planning_response_adapters/DisplayMotionPath
+
 planner_configs:
   SBL:
     type: geometric::SBL
@@ -373,7 +386,7 @@ head:
   projection_evaluator: joints(neck_y_joint,neck_p_joint)
   longest_valid_segment_fraction: 0.005
 rhand:
-  default_planner_config: ""
+  default_planner_config: RRTConnect
   planner_configs:
     - SBL
     - EST
@@ -399,7 +412,7 @@ rhand:
     - SPARS
     - SPARStwo
 lhand:
-  default_planner_config: ""
+  default_planner_config: RRTConnect
   planner_configs:
     - SBL
     - EST
@@ -453,7 +466,7 @@ torso:
   projection_evaluator: joints(ankle_joint,ankle_joint_mimic)
   longest_valid_segment_fraction: 0.005
 upper_body:
-  default_planner_config: ""
+  default_planner_config: RRTConnect
   planner_configs:
     - SBL
     - EST
@@ -481,7 +494,7 @@ upper_body:
   projection_evaluator: joints(waist_y_joint,waist_p_joint)
   longest_valid_segment_fraction: 0.005
 whole_body:
-  default_planner_config: ""
+  default_planner_config: RRTConnect
   planner_configs:
     - SBL
     - EST

@@ -1,24 +1,21 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>seed_r7_robot_interface</name>
   <version>0.3.4</version>
-  <description>The seed_r7_robot_interface package</description>
+  <description>Stroke converter plugins for SEED-Solutions R7 robot models</description>
 
   <maintainer email="hi.kondo@thk.co.jp">hi.kondo</maintainer>
-
   <license>BSD</license>
-
   <author>Kazuhiro Sasabuchi</author>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>roscpp</depend>
+  <depend>rclcpp</depend>
+  <depend>pluginlib</depend>
   <depend>seed_r7_ros_controller</depend>
 
   <export>
-    <seed_r7_ros_controller plugin="${prefix}/typef/plugin_description.xml"/>
-    <seed_r7_ros_controller plugin="${prefix}/typeg/plugin_description.xml"/>
-    <seed_r7_ros_controller plugin="${prefix}/typeg_arm/plugin_description.xml"/>
-    <seed_r7_ros_controller plugin="${prefix}/typeg2_arm/plugin_description.xml"/>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

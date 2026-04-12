@@ -1,31 +1,43 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>seed_r7_samples</name>
   <version>0.3.4</version>
-
-  <description>The seed_r7_samples package</description>
-
+  <description>Sample programs for SEED-Noid-Mover robot (typef)</description>
   <maintainer email="y.shiigi@thk.co.jp">Yasuto Shiigi</maintainer>
-
   <license>BSD</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>seed_r7_ros_controller</depend>
-  <depend>seed_r7_robot_interface</depend>
-  <depend>seed_r7_bringup</depend>
-  <depend>seed_r7_moveit_config</depend>
-  <depend>seed_r7_typef_moveit_config</depend>
-  <depend>seed_r7_typeg_moveit_config</depend>
-  <depend>seed_r7_navigation</depend>
-  <depend>smach_ros</depend>
-  <depend>smach_viewer</depend>
-  <depend>moveit_simple_controller_manager</depend>
-  <depend>moveit_commander</depend>
-  <depend>rviz_plugin_tutorials</depend>
-  <depend>rviz</depend>
+  <!-- C++ build deps -->
+  <build_depend>rclcpp</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>moveit_ros_planning_interface</build_depend>
+  <build_depend>moveit_core</build_depend>
+  <build_depend>ament_index_cpp</build_depend>
+  <build_depend>seed_r7_ros_controller</build_depend>
 
-  <test_depend>roslaunch</test_depend>
-  <test_depend>rostest</test_depend>
+  <!-- runtime -->
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>moveit_ros_planning_interface</exec_depend>
+  <exec_depend>moveit_py</exec_depend>
+  <exec_depend>moveit_msgs</exec_depend>
+  <exec_depend>smach</exec_depend>
+  <exec_depend>smach_ros</exec_depend>
+  <exec_depend>ament_index_cpp</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>seed_r7_ros_controller</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
 
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>

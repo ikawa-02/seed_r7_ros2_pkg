@@ -7,4 +7,8 @@ install(DIRECTORY config launch scripts
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(FILES rviz.rviz
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()

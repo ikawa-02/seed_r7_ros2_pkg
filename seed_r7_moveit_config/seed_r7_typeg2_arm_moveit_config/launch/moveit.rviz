@@ -1,5 +1,5 @@
 Panels:
-  - Class: rviz/Displays
+  - Class: rviz_common/Displays
     Help Height: 84
     Name: Displays
     Property Tree Widget:
@@ -7,9 +7,9 @@ Panels:
         - /MotionPlanning1
       Splitter Ratio: 0.74256
     Tree Height: 664
-  - Class: rviz/Help
+  - Class: rviz_common/Help
     Name: Help
-  - Class: rviz/Views
+  - Class: rviz_common/Views
     Expanded:
       - /Current View1
     Name: Views
@@ -19,7 +19,7 @@ Visualization Manager:
   Displays:
     - Alpha: 0.5
       Cell Size: 1
-      Class: rviz/Grid
+      Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
       Enabled: true
       Line Style:
@@ -651,14 +651,14 @@ Visualization Manager:
     Fixed Frame: odom
   Name: root
   Tools:
-    - Class: rviz/Interact
+    - Class: rviz_default_plugins/Interact
       Hide Inactive Objects: true
-    - Class: rviz/MoveCamera
-    - Class: rviz/Select
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
   Value: true
   Views:
     Current:
-      Class: rviz/XYOrbit
+      Class: rviz_default_plugins/XYOrbit
       Distance: 2.9965
       Focal Point:
         X: 0.113567
@@ -668,7 +668,7 @@ Visualization Manager:
       Near Clip Distance: 0.01
       Pitch: 0.509797
       Target Frame: /base_link
-      Value: XYOrbit (rviz)
+      Value: XYOrbit (rviz_default_plugins)
       Yaw: 5.65995
     Saved: ~
 Window Geometry:

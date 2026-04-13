@@ -1,0 +1,29 @@
+# MoveIt2 controller manager configuration for SEED-Arm-Mover-typeG2
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+    - lifter_controller
+
+  arm_controller:
+    name: arm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - shoulder_y_joint
+      - shoulder_p_joint
+      - elbow_joint
+      - wrist_y_joint
+      - wrist_r_joint
+      - wrist_p_joint
+
+  lifter_controller:
+    name: lifter_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - knee_joint
+      - ankle_joint

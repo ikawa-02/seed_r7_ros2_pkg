@@ -1,0 +1,85 @@
+# MoveIt2 controller manager configuration for SEED-Noid-Mover-typeG
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - rarm_controller
+    - larm_controller
+    - head_controller
+    - waist_controller
+    - lifter_controller
+    - lhand_controller
+    - rhand_controller
+
+  rarm_controller:
+    name: rarm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - r_shoulder_p_joint
+      - r_shoulder_r_joint
+      - r_shoulder_y_joint
+      - r_elbow_joint
+      - r_wrist_y_joint
+      - r_wrist_p_joint
+      - r_wrist_r_joint
+
+  larm_controller:
+    name: larm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - l_shoulder_p_joint
+      - l_shoulder_r_joint
+      - l_shoulder_y_joint
+      - l_elbow_joint
+      - l_wrist_y_joint
+      - l_wrist_p_joint
+      - l_wrist_r_joint
+
+  head_controller:
+    name: head_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - neck_y_joint
+      - neck_p_joint
+      - neck_r_joint
+
+  waist_controller:
+    name: waist_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - waist_y_joint
+      - waist_p_joint
+      - waist_r_joint
+
+  lifter_controller:
+    name: lifter_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - knee_joint
+      - ankle_joint
+
+  lhand_controller:
+    name: lhand_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - l_thumb_joint
+
+  rhand_controller:
+    name: rhand_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - r_thumb_joint

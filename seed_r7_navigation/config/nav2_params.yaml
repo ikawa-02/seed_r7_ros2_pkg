@@ -42,6 +42,13 @@ amcl:
     z_short: 0.05
     scan_topic: scan
     map_topic: map
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
 
 bt_navigator:
   ros__parameters:
@@ -139,11 +146,7 @@ local_costmap:
       footprint: "[[-0.35, -0.25], [-0.35, 0.25], [0.35, 0.25], [0.35, -0.25]]"
       footprint_padding: 0.001
       transform_tolerance: 0.5
-      plugins: [static_layer, obstacle_layer, inflation_layer]
-      static_layer:
-        plugin: nav2_costmap_2d::StaticLayer
-        map_subscribe_transient_local: true
-        enabled: true
+      plugins: [obstacle_layer, inflation_layer]
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
         enabled: true

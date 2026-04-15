@@ -32,11 +32,14 @@ from launch.substitutions import LaunchConfiguration
 def launch_setup(context, *args, **kwargs):
     nav_share = get_package_share_directory('seed_r7_navigation')
 
-    run_bringup   = LaunchConfiguration('run_bringup').perform(context)
-    map_file      = LaunchConfiguration('map').perform(context)
-    params_file   = LaunchConfiguration('params_file').perform(context)
-    use_sim_time  = LaunchConfiguration('use_sim_time').perform(context)
-    cmd_vel_topic = LaunchConfiguration('cmd_vel_topic').perform(context)
+    run_bringup      = LaunchConfiguration('run_bringup').perform(context)
+    map_file         = LaunchConfiguration('map').perform(context)
+    params_file      = LaunchConfiguration('params_file').perform(context)
+    use_sim_time     = LaunchConfiguration('use_sim_time').perform(context)
+    cmd_vel_topic    = LaunchConfiguration('cmd_vel_topic').perform(context)
+    ip_address       = LaunchConfiguration('ip_address').perform(context)
+    ip_address_rear  = LaunchConfiguration('ip_address_rear').perform(context)
+    use_rear_laser   = LaunchConfiguration('use_rear_laser').perform(context)
 
     actions = []
 
@@ -47,6 +50,11 @@ def launch_setup(context, *args, **kwargs):
                 PythonLaunchDescriptionSource(
                     os.path.join(nav_share, 'launch', 'wheel_bringup.launch.py')
                 ),
+                launch_arguments={
+                    'ip_address':      ip_address,
+                    'ip_address_rear': ip_address_rear,
+                    'use_rear_laser':  use_rear_laser,
+                }.items(),
             )
         )
 
@@ -95,6 +103,21 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'use_sim_time',
             default_value='false',
+        ),
+        DeclareLaunchArgument(
+            'ip_address',
+            default_value='192.168.0.10',
+            description='IP address of the front URG laser (used when run_bringup:=true)',
+        ),
+        DeclareLaunchArgument(
+            'ip_address_rear',
+            default_value='192.168.0.11',
+            description='IP address of the rear URG laser (used when use_rear_laser:=true)',
+        ),
+        DeclareLaunchArgument(
+            'use_rear_laser',
+            default_value='false',
+            description='Launch a second URG for rear scan',
         ),
         OpaqueFunction(function=launch_setup),
     ])
